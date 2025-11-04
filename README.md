@@ -4,7 +4,7 @@ A user-friendly Streamlit-based GUI for molecular docking of ligands to metallop
 
 Link: https://metallodock-9rfsp7szmdt7fevwbdb9vh.streamlit.app/
 
-### Addiotional Option 1: Run Locally (Recommended)
+### Addiotional Option 1: Run Locally
 
 1. **Clone this repository:**
    ```bash
@@ -25,23 +25,6 @@ Link: https://metallodock-9rfsp7szmdt7fevwbdb9vh.streamlit.app/
 
 4. **Open your browser:**
    The GUI will automatically open at `http://localhost:8501`
-
-### Additional Option 2: Open in Visual Studio Code
-
-1. Click the green "Code" button on GitHub
-2. Select "Open with Visual Studio Code"
-3. Install the recommended extensions
-4. Open a terminal and run: `streamlit run MetalloDock.py`
-
-### Additional Option 3: GitHub Codespaces (Cloud)
-
-1. Click the "Open in GitHub Codespaces" badge at the top of this README
-2. Select your repository
-3. Create a new codespace (it will automatically set up the environment)
-4. Once the container loads, run: `streamlit run MetalloDock.py`
-5. The GUI will open automatically in your browser
-
-**Note:** Codespaces runs on Linux, so Windows executables (`.exe` files) won't work directly. For cloud deployment, you'll need Linux versions of the executables in `Files_for_GUI/`.
 
 ## 📋 Requirements
 
@@ -161,29 +144,11 @@ All executables and parameter files are automatically detected from the `Files_f
 - Parameters: `AD4_parameters.dat`, `AD4Zn.dat`
 - Scripts: `zinc_pseudo.py`
 
-## 🐛 Troubleshooting
-
-### "Python not found"
-- Install Python from [python.org](https://www.python.org/downloads/)
-- Make sure Python is added to PATH
-
-### "Streamlit not found"
-- Install with: `pip install streamlit pandas`
-- Or use: `pip install -r requirements.txt`
-
-### "Port already in use"
-- Close other Streamlit applications
-- Or specify a different port: `streamlit run MetalloDock.py --server.port 8502`
-
-### "Executable not found"
-- Ensure `Files_for_GUI/` folder contains all required executables
-- Check that file names match exactly (case-sensitive on Linux/Mac)
-
-
 ## 📧 Contact
 
 For all questions and concerns contact Dr. Sivanesan Dakshanamurthy at sd233@georgetown.edu
 ---
+
 
 
 
