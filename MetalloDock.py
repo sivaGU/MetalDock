@@ -1082,8 +1082,8 @@ if __name__ == "__main__":
 # Streamlit UI
 # ==============================
 
-st.set_page_config(page_title="Metalloprotein Docking UI (Vina + AD4Zn + SMINA)", layout="wide")
-st.title("🧪 Metalloprotein Docking UI (Vina + AD4Zn + SMINA)")
+st.set_page_config(page_title="MetalloDock", layout="wide")
+st.title("MetalloDock")
 
 # Working directory chooser
 work_dir_input = st.text_input(
@@ -1589,3 +1589,4 @@ st.caption(
     "• The app now scans **all ligands** to decide which maps to make, and prints per-ligand **Score** or **missing map** in the console.\n"
     "• Use **No timeout** for tough ligands; or enable soft timeouts with retries/backoff."
 )
+
