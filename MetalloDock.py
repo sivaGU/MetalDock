@@ -1728,6 +1728,9 @@ work_dir = Path(work_dir_input).expanduser().resolve()
 work_dir.mkdir(parents=True, exist_ok=True)
 st.caption(f"Using working directory: `{work_dir}`")
 
+# Detect OS once for GUI runtime
+is_windows = platform.system() == "Windows"
+
 # Receptor and Ligand Upload Section (Top)
 st.subheader("Upload Receptor & Ligands")
 upload_col1, upload_col2 = st.columns(2)
@@ -1768,6 +1771,7 @@ with st.expander("Configuration", expanded=True):
             )
 
         # Auto-detect executables and parameters from Files_for_GUI (no user input needed)
+        global smina_exe
         files_gui_dir = work_dir / "Files_for_GUI"
         autodetect = False
         if backend == "Vina (box)":
