@@ -10,6 +10,7 @@ import zipfile
 import random
 import subprocess
 import platform
+import stat
 from pathlib import Path
 from typing import List, Tuple, Optional, Set
 
@@ -228,19 +229,14 @@ def run_autogrid4(autogrid_exe: Path, work_dir: Path, gpf_path: Path, timeout_s:
     """Run AutoGrid4 with proper error handling and permission checks."""
     if not autogrid_exe or not autogrid_exe.exists():
         raise FileNotFoundError(f"AutoGrid4 executable not found at: {autogrid_exe}")
-    
-    # Check if it's a Windows .exe on a non-Windows system FIRST (most important check)
+
     is_windows_os = platform.system() == "Windows"
-    
-    # Check filename for .exe extension (case-insensitive check)
     exe_name_lower = str(autogrid_exe.name).lower()
     has_exe_extension = exe_name_lower.endswith('.exe') or autogrid_exe.suffix.lower() == '.exe'
-    
+
     if not is_windows_os and has_exe_extension:
-        # Detect if running on Streamlit Cloud
         is_streamlit_cloud = os.environ.get("STREAMLIT_SERVER_URL", "").startswith("https://") or os.environ.get("STREAMLIT_SHARE", "") != ""
         cloud_context = "Streamlit Cloud runs on Linux servers" if is_streamlit_cloud else "This system runs on Linux"
-        
         raise PermissionError(
             f"Windows executable (.exe) detected on Linux system.\n\n"
             f"**Why Linux?** {cloud_context}, so Windows .exe files cannot run here.\n\n"
@@ -250,25 +246,44 @@ def run_autogrid4(autogrid_exe: Path, work_dir: Path, gpf_path: Path, timeout_s:
             f"3. Commit and push to GitHub - Streamlit Cloud will automatically detect it\n"
             f"4. The Linux executable will work on Streamlit Cloud"
         )
-    
-    # Check if executable (on Unix-like systems) - only for Linux executables
-    # This check should only run if we've confirmed it's NOT a Windows .exe
+
+    executable_path = autogrid_exe
+
     if not is_windows_os and not has_exe_extension:
         if not os.access(autogrid_exe, os.X_OK):
-            raise PermissionError(
-                f"AutoGrid4 executable is not executable: {autogrid_exe}\n"
-                f"Fix by running: chmod +x {autogrid_exe}"
-            )
-    
+            try:
+                current_stat = os.stat(autogrid_exe)
+                new_mode = current_stat.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+                os.chmod(autogrid_exe, new_mode)
+                if not os.access(autogrid_exe, os.X_OK):
+                    os.chmod(autogrid_exe, 0o755)
+            except (OSError, PermissionError):
+                pass
+
+        if not os.access(autogrid_exe, os.X_OK):
+            temp_bin_dir = work_dir / "_autogrid_bin"
+            temp_bin_dir.mkdir(parents=True, exist_ok=True)
+            temp_bin = temp_bin_dir / autogrid_exe.name
+            try:
+                shutil.copy2(autogrid_exe, temp_bin)
+                os.chmod(temp_bin, 0o755)
+                executable_path = temp_bin
+            except Exception as copy_exc:
+                raise PermissionError(
+                    f"AutoGrid4 executable is not executable and could not be copied to a writable location: {autogrid_exe}\n"
+                    f"Original error: {copy_exc}\n"
+                    f"Ensure the binary has execute permissions before deployment (git update-index --chmod=+x Files_for_GUI/autogrid4)."
+                )
+
     try:
         return subprocess.run(
-            [str(autogrid_exe), "-p", gpf_path.name, "-l", gpf_path.with_suffix(".glg").name],
+            [str(executable_path), "-p", gpf_path.name, "-l", gpf_path.with_suffix(".glg").name],
             cwd=str(work_dir), capture_output=True, text=True, timeout=timeout_s
         )
     except PermissionError as e:
         raise PermissionError(
-            f"Permission denied when trying to run AutoGrid4: {autogrid_exe}\n"
-            f"On Linux/Mac, make sure the file has execute permissions: chmod +x {autogrid_exe}\n"
+            f"Permission denied when trying to run AutoGrid4: {executable_path}\n"
+            f"On Linux/Mac, make sure the file has execute permissions: chmod +x {executable_path}\n"
             f"Original error: {e}"
         )
 
@@ -1032,7 +1047,7 @@ def run_endogenous_preset_ad4(preset_key: str, headless: bool = False) -> List[d
         max_retries=int(max_retries),
         exhu_backoff=float(exhu_backoff),
         modes_backoff=float(modes_backoff),
-        progress_cb=(_cb if not headless else None),
+        progress_cb=_cb,
         maps_prefix=maps_prefix,
         skip_if_output_exists=bool(skip_exists),
     )
@@ -1174,33 +1189,22 @@ with st.expander("⚙️ Configuration", expanded=True):
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("Executables & Scripts")
-        backend = st.radio("Docking backend", [
-            "Vina (box)", 
-            "AD4 maps (AutoGrid4/AD4Zn)", 
-            "HYBRID (AD4 orientation + SMINA components)"
-        ], index=1)
-        
-        # Backend guidance
+        backend = st.radio(
+            "Docking backend",
+            ["Vina (box)", "AD4 maps (AutoGrid4/AD4Zn)"],
+            index=1,
+        )
+
         if backend == "Vina (box)":
-            st.info("📦 **Vina (box) mode:** Uses regular Vina scoring with a search box. Good for general docking.")
-        elif backend == "AD4 maps (AutoGrid4/AD4Zn)":
-            st.info("🗺️ **AD4 maps mode:** Uses AutoGrid4 maps + AD4Zn parameters. **Required for building maps!** Best for metalloproteins.")
-        elif backend == "HYBRID (AD4 orientation + SMINA components)":
-            st.info(
-                "🔄 **HYBRID MODE:**\n\n"
-                "1. Docks with AD4 + zinc maps (accurate metalloprotein orientation)\n"
-                "2. Analyzes poses with SMINA (extracts ALL scoring components)\n\n"
-                "**You get:**\n"
-                "- AD4 binding affinity (zinc-specific)\n"
-                "- Individual components: gauss1, gauss2, repulsion, hydrophobic, h_bond, N_rot\n"
-                "- Best of both worlds!"
-            )
+            st.info("📦 **Vina (box) mode:** Uses standard Vina scoring with the defined search box.")
+            autodetect = st.checkbox("Auto-detect metal center", value=True)
+        else:
+            st.info("🗺️ **AD4 maps mode:** Runs AutoDock4 with prebuilt maps (recommended for metalloproteins).")
+            autodetect = False
 
         # Auto-detect executables and parameters from Files_for_GUI (no user input needed)
         files_gui_dir = work_dir / "Files_for_GUI"
         import sys
-        
-        autodetect = st.checkbox("Auto-detect metal center (for Vina box)", value=True)
 
     with c2:
         st.subheader("Grid Box Settings")
@@ -1244,7 +1248,8 @@ with st.expander("⚙️ Configuration", expanded=True):
 st.subheader("Docking Parameters")
 p1, p2, p3, p4 = st.columns(4)
 with p1:
-    scoring = st.selectbox("Scoring function", ["ad4", "vina"], index=0)
+    scoring = "ad4" if backend == "AD4 maps (AutoGrid4/AD4Zn)" else "vina"
+    st.markdown(f"**Scoring function:** `{scoring}`")
 with p2:
     base_exhaustiveness = st.number_input("Base exhaustiveness", value=64, min_value=1, step=1)
 with p3:
@@ -1577,92 +1582,42 @@ if run_btn:
     tm_mode_key = "no_timeout" if timeout_mode.startswith("No timeout") else "soft_timeout"
 
     with st.spinner("Running docking…"):
-        # Check if hybrid mode
-        if backend == "HYBRID (AD4 orientation + SMINA components)":
-            # Run hybrid analysis
-            if not maps_prefix or not maps_prefix.parent.exists():
-                st.error("AD4 maps required for hybrid mode. Build maps first.")
-                st.stop()
-            
-            rows = run_hybrid_batch(
-                vina_exe=vina_exe,
-                receptor_file=receptor_path,
-                ligand_files=ligand_paths,
-                out_dir=out_dir,
-                center=(cx, cy, cz),
-                size=(float(size_x), float(size_y), float(size_z)),
-                exhaustiveness=int(base_exhaustiveness),
-                num_modes=int(base_num_modes),
-                maps_prefix=maps_prefix,
-                progress_cb=_cb,
-                timeout_s=int(timeout_s)
-            )
-        else:
-            # Regular Vina or AD4 docking
-            rows = run_vina_batch(
-                vina_exe=vina_exe,
-                receptor_file=receptor_path,
-                ligand_files=ligand_paths,
-                out_dir=out_dir,
-                center=(cx, cy, cz),
-                size=(float(size_x), float(size_y), float(size_z)),
-                scoring=scoring,
-                base_exhaustiveness=int(base_exhaustiveness),
-                base_num_modes=int(base_num_modes),
-                timeout_mode=tm_mode_key,
-                timeout_s=int(timeout_s),
-                max_retries=int(max_retries),
-                exhu_backoff=float(exhu_backoff),
-                modes_backoff=float(modes_backoff),
-                progress_cb=_cb,
-                maps_prefix=maps_prefix,
-                skip_if_output_exists=bool(skip_exists),
-            )
+        rows = run_vina_batch(
+            vina_exe=vina_exe,
+            receptor_file=receptor_path,
+            ligand_files=ligand_paths,
+            out_dir=out_dir,
+            center=(cx, cy, cz),
+            size=(float(size_x), float(size_y), float(size_z)),
+            scoring=scoring,
+            base_exhaustiveness=int(base_exhaustiveness),
+            base_num_modes=int(base_num_modes),
+            timeout_mode=tm_mode_key,
+            timeout_s=int(timeout_s),
+            max_retries=int(max_retries),
+            exhu_backoff=float(exhu_backoff),
+            modes_backoff=float(modes_backoff),
+            progress_cb=_cb,
+            maps_prefix=maps_prefix if scoring == "ad4" else None,
+            skip_if_output_exists=bool(skip_exists),
+        )
 
     df = pd.DataFrame(rows)
     st.success("Docking complete.")
     st.dataframe(df, use_container_width=True)
 
-    # Quick stats
-    if backend == "HYBRID (AD4 orientation + SMINA components)":
-        # Display hybrid-specific results
-        st.subheader("📊 Hybrid Analysis Results")
-        
-        successful = [r for r in rows if r.get('Status') == 'Success']
-        if successful:
-            st.write(f"**Successfully analyzed:** {len(successful)}/{len(rows)} compounds")
-            
-            # Show component breakdown for successful compounds
-            comp_df = pd.DataFrame(successful)
-            
-            # Select relevant columns
-            display_cols = ['Ligand', 'AD4_Affinity', 'gauss1', 'gauss2', 'repulsion', 
-                           'hydrophobic', 'hydrogen_bond', 'N_rot_contribution', 'N_rot']
-            
-            if all(col in comp_df.columns for col in display_cols):
-                st.write("**Individual Scoring Components:**")
-                st.dataframe(comp_df[display_cols], use_container_width=True)
-                
-                # Component statistics
-                try:
-                    ad4_affs = [float(r['AD4_Affinity']) for r in successful if r['AD4_Affinity'] not in ('N/A', None, '')]
-                    if ad4_affs:
-                        st.write(f"**AD4 Binding Affinities:** {min(ad4_affs):.2f} to {max(ad4_affs):.2f} kcal/mol")
-                    
-                    gauss1_vals = [float(r['gauss1']) for r in successful if r['gauss1'] not in ('N/A', None, '')]
-                    if gauss1_vals:
-                        avg_g1 = sum(gauss1_vals) / len(gauss1_vals)
-                        st.write(f"**Average gauss1 (shape fit):** {avg_g1:.2f} kcal/mol")
-                except Exception:
-                    pass
+    if scoring == "ad4":
+        st.subheader("🧲 AD4 Summary")
     else:
-        try:
-            aff = [float(r["Binding_Affinity"]) for r in rows if r["Binding_Affinity"] not in ("", "N/A")]
-            if aff:
-                st.write(f"**Binding affinities range:** {min(aff):.1f} to {max(aff):.1f} kcal/mol")
-                st.write(f"**Average binding affinity:** {sum(aff)/len(aff):.1f} kcal/mol")
-        except Exception:
-            pass
+        st.subheader("📦 Vina Summary")
+
+    try:
+        aff = [float(r["Binding_Affinity"]) for r in rows if r.get("Binding_Affinity") not in ("", "N/A", None)]
+        if aff:
+            st.write(f"Binding affinities range: {min(aff):.1f} to {max(aff):.1f} kcal/mol")
+            st.write(f"Average binding affinity: {sum(aff)/len(aff):.1f} kcal/mol")
+    except Exception:
+        pass
 
     st.download_button(
         "⬇️ Download results CSV",
@@ -1679,8 +1634,8 @@ if run_btn:
         )
 
 st.caption(
-    "Tips:\n"
-    "• If you see “Affinity map for atom type X is not present”, click **Build/Update AD4 maps** with X in Force-include.\n"
-    "• The app now scans **all ligands** to decide which maps to make, and prints per-ligand **Score** or **missing map** in the console.\n"
-    "• Use **No timeout** for tough ligands; or enable soft timeouts with retries/backoff."
+    """Tips:
+• If you see "Affinity map for atom type X is not present", click **Build/Update AD4 maps** with X in Force-include.
+• The app now scans **all ligands** to decide which maps to make, and prints per-ligand **Score** or **missing map** in the console.
+• Use **No timeout** for tough ligands; or enable soft timeouts with retries/backoff."""
 )
