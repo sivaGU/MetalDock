@@ -1399,7 +1399,7 @@ elif receptor_input_mode == "Local path" and receptor_local_path:
 
 # Test executables
 if test_btn:
-    if vina_exe and vina_exe.exists():
+    if vina_exe and Path(vina_exe).exists():
         try:
             p = subprocess.run([str(vina_exe), "--help"], capture_output=True, text=True, timeout=10)
             st.success("Vina reachable.")
@@ -1411,8 +1411,9 @@ if test_btn:
 
     if backend == "AD4 maps (AutoGrid4/AD4Zn)":
         for name, exe in [("AutoGrid4", autogrid_exe), ("Python", python_exe)]:
-            if exe and exe.exists():
-                st.info(f"{name} OK: {exe}")
+            exe_path = Path(exe) if exe else None
+            if exe_path and exe_path.exists():
+                st.info(f"{name} OK: {exe_path}")
             else:
                 st.error(f"{name} not found in Files_for_GUI.")
         for name, pth in [("zinc_pseudo.py", zinc_pseudo_py), ("AD4_parameters.dat", base_params), ("AD4Zn.dat (extra)", extra_params)]:
@@ -1587,9 +1588,15 @@ if build_maps_btn:
 run_btn = st.button("🚀 Run Docking", type="primary")
 
 if run_btn:
-    if not vina_exe.exists():
-        st.error("Vina executable not found.")
-        st.stop()
+    if not vina_exe or not Path(vina_exe).exists():
+        print(f"ERROR: vina executable not found at {vina_exe}")
+        sys.exit(1)
+    if not autogrid_exe or not Path(autogrid_exe).exists():
+        print(f"ERROR: autogrid4 executable not found at {autogrid_exe}")
+        sys.exit(1)
+    if not base_params.exists():
+        print(f"ERROR: AD4_parameters.dat not found at {base_params}")
+        sys.exit(1)
     if receptor_path is None or not receptor_path.exists():
         st.error("Receptor file missing/invalid.")
         st.stop()
@@ -1636,7 +1643,7 @@ if run_btn:
 
     with st.spinner("Running docking…"):
         rows = run_vina_batch(
-            vina_exe=vina_exe,
+            vina_exe=Path(vina_exe),
             receptor_file=receptor_path,
             ligand_files=ligand_paths,
             out_dir=out_dir,
