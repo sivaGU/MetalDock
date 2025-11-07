@@ -12,12 +12,22 @@ import subprocess
 import platform
 import stat
 from pathlib import Path
-from typing import List, Tuple, Optional, Set
+from typing import List, Tuple, Optional, Set, Dict
 
 import streamlit as st
 import pandas as pd
 import argparse
 import sys
+
+
+SMINA_TERM_WEIGHTS = {
+    "gauss1": -0.035579,
+    "gauss2": -0.005156,
+    "repulsion": 0.840245,
+    "hydrophobic": -0.035069,
+    "hydrogen_bond": -0.587439,
+    "num_tors_div": 1.923,
+}
 
 # ==============================
 # Small helpers
@@ -52,13 +62,36 @@ def autodetect_metal_center(receptor_path: Path, metals=("ZN","MG","MN","FE","CU
     return None
 
 def parse_binding_affinity(pdbqt: Path) -> str:
+    """Parse binding affinity from Vina output PDBQT file.
+    Supports both Vina and AD4 scoring formats."""
     try:
         with open(pdbqt, "r", errors="ignore") as f:
             for ln in f:
+                # Try Vina format first: "REMARK VINA RESULT:   -7.2   0.000   0.000"
                 if ln.startswith("REMARK VINA RESULT:"):
                     parts = ln.split()
                     if len(parts) >= 4:
                         return parts[3]
+                # Try AD4 format: "REMARK AD4 RESULT:   -7.2   0.000   0.000"
+                elif ln.startswith("REMARK AD4 RESULT:"):
+                    parts = ln.split()
+                    if len(parts) >= 4:
+                        return parts[3]
+                # Try generic format: "REMARK RESULT:   -7.2   0.000   0.000"
+                elif ln.startswith("REMARK RESULT:"):
+                    parts = ln.split()
+                    if len(parts) >= 3:
+                        return parts[2]
+                # Also check for estimated binding energy in AD4 verbose output
+                elif "Estimated Free Energy of Binding" in ln:
+                    parts = ln.split()
+                    # Look for the number after "Binding"
+                    for i, part in enumerate(parts):
+                        if "Binding" in part and i + 1 < len(parts):
+                            try:
+                                return str(float(parts[i + 1]))
+                            except (ValueError, IndexError):
+                                pass
     except Exception:
         pass
     return "N/A"
@@ -229,14 +262,19 @@ def run_autogrid4(autogrid_exe: Path, work_dir: Path, gpf_path: Path, timeout_s:
     """Run AutoGrid4 with proper error handling and permission checks."""
     if not autogrid_exe or not autogrid_exe.exists():
         raise FileNotFoundError(f"AutoGrid4 executable not found at: {autogrid_exe}")
-
+    
+    # Check if it's a Windows .exe on a non-Windows system FIRST (most important check)
     is_windows_os = platform.system() == "Windows"
+    
+    # Check filename for .exe extension (case-insensitive check)
     exe_name_lower = str(autogrid_exe.name).lower()
     has_exe_extension = exe_name_lower.endswith('.exe') or autogrid_exe.suffix.lower() == '.exe'
-
+    
     if not is_windows_os and has_exe_extension:
+        # Detect if running on Streamlit Cloud
         is_streamlit_cloud = os.environ.get("STREAMLIT_SERVER_URL", "").startswith("https://") or os.environ.get("STREAMLIT_SHARE", "") != ""
         cloud_context = "Streamlit Cloud runs on Linux servers" if is_streamlit_cloud else "This system runs on Linux"
+        
         raise PermissionError(
             f"Windows executable (.exe) detected on Linux system.\n\n"
             f"**Why Linux?** {cloud_context}, so Windows .exe files cannot run here.\n\n"
@@ -246,44 +284,51 @@ def run_autogrid4(autogrid_exe: Path, work_dir: Path, gpf_path: Path, timeout_s:
             f"3. Commit and push to GitHub - Streamlit Cloud will automatically detect it\n"
             f"4. The Linux executable will work on Streamlit Cloud"
         )
-
-    executable_path = autogrid_exe
-
+    
+    # Check if executable (on Unix-like systems) - only for Linux executables
+    # This check should only run if we've confirmed it's NOT a Windows .exe
     if not is_windows_os and not has_exe_extension:
         if not os.access(autogrid_exe, os.X_OK):
+            # Try to automatically fix execute permissions - more aggressive fix
             try:
+                # First try the standard chmod
                 current_stat = os.stat(autogrid_exe)
                 new_mode = current_stat.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
                 os.chmod(autogrid_exe, new_mode)
-                if not os.access(autogrid_exe, os.X_OK):
+                
+                # Verify it worked
+                if os.access(autogrid_exe, os.X_OK):
+                    # Successfully fixed, continue
+                    pass
+                else:
+                    # Try setting permissions to 755 explicitly
                     os.chmod(autogrid_exe, 0o755)
-            except (OSError, PermissionError):
-                pass
-
-        if not os.access(autogrid_exe, os.X_OK):
-            temp_bin_dir = work_dir / "_autogrid_bin"
-            temp_bin_dir.mkdir(parents=True, exist_ok=True)
-            temp_bin = temp_bin_dir / autogrid_exe.name
-            try:
-                shutil.copy2(autogrid_exe, temp_bin)
-                os.chmod(temp_bin, 0o755)
-                executable_path = temp_bin
-            except Exception as copy_exc:
+                    if not os.access(autogrid_exe, os.X_OK):
+                        raise PermissionError(
+                            f"AutoGrid4 executable is not executable and could not be fixed: {autogrid_exe}\n"
+                            f"The file exists but lacks execute permissions. This is a Streamlit Cloud limitation.\n"
+                            f"Please ensure the files have execute permissions in Git before pushing to GitHub."
+                        )
+            except (OSError, PermissionError) as e:
+                # Could not fix permissions automatically - this happens on some cloud platforms
                 raise PermissionError(
-                    f"AutoGrid4 executable is not executable and could not be copied to a writable location: {autogrid_exe}\n"
-                    f"Original error: {copy_exc}\n"
-                    f"Ensure the binary has execute permissions before deployment (git update-index --chmod=+x Files_for_GUI/autogrid4)."
+                    f"AutoGrid4 executable is not executable: {autogrid_exe}\n"
+                    f"Attempted to fix automatically but failed due to: {str(e)}\n\n"
+                    f"**Solution:** Ensure files have execute permissions in Git before pushing:\n"
+                    f"1. Run: git update-index --chmod=+x Files_for_GUI/autogrid4\n"
+                    f"2. Commit and push to GitHub\n"
+                    f"3. Streamlit Cloud will preserve the execute permissions"
                 )
-
+    
     try:
         return subprocess.run(
-            [str(executable_path), "-p", gpf_path.name, "-l", gpf_path.with_suffix(".glg").name],
+            [str(autogrid_exe), "-p", gpf_path.name, "-l", gpf_path.with_suffix(".glg").name],
             cwd=str(work_dir), capture_output=True, text=True, timeout=timeout_s
         )
     except PermissionError as e:
         raise PermissionError(
-            f"Permission denied when trying to run AutoGrid4: {executable_path}\n"
-            f"On Linux/Mac, make sure the file has execute permissions: chmod +x {executable_path}\n"
+            f"Permission denied when trying to run AutoGrid4: {autogrid_exe}\n"
+            f"On Linux/Mac, make sure the file has execute permissions: chmod +x {autogrid_exe}\n"
             f"Original error: {e}"
         )
 
@@ -299,52 +344,6 @@ def list_maps_present(maps_prefix: Path) -> Set[str]:
             present.add(t)
     return present
 
-def _ensure_executable(exe: Optional[Path], work_dir: Path, temp_subdir: str) -> Optional[Path]:
-    """Ensure an executable is runnable on Linux by chmod'ing or copying to a temp dir."""
-    if exe is None:
-        return None
-
-    exe = Path(exe)
-    if not exe.exists():
-        return exe
-
-    if platform.system() == "Windows":
-        return exe
-
-    if os.access(exe, os.X_OK):
-        return exe
-
-    try:
-        current_stat = os.stat(exe)
-        new_mode = current_stat.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
-        os.chmod(exe, new_mode)
-        if os.access(exe, os.X_OK):
-            return exe
-        os.chmod(exe, 0o755)
-        if os.access(exe, os.X_OK):
-            return exe
-    except Exception:
-        pass
-
-    temp_dir = work_dir / temp_subdir
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    temp_exe = temp_dir / exe.name
-    try:
-        shutil.copy2(exe, temp_exe)
-        os.chmod(temp_exe, 0o755)
-        if os.access(temp_exe, os.X_OK):
-            return temp_exe
-    except Exception as copy_exc:
-        raise PermissionError(
-            f"Executable {exe} is not runnable and could not be copied to {temp_exe}. "
-            "Ensure the binary has execute permissions before deployment (git update-index --chmod=+x)."
-        ) from copy_exc
-
-    raise PermissionError(
-        f"Executable {exe} is not runnable even after attempting to set permissions. "
-        "Set chmod +x on the file before pushing to Streamlit."
-    )
-
 # ==============================
 # Docking (no-timeout option + retries/backoff + console prints)
 # ==============================
@@ -359,19 +358,28 @@ def _vina_cmd(
     exhaustiveness: int,
     num_modes: int,
     seed: Optional[int],
-    maps_prefix: Optional[Path]
+    maps_prefix: Optional[Path],
+    autodock4_exe: Optional[Path] = None,  # For AD4 docking
 ) -> List[str]:
     cx, cy, cz = center
     sx, sy, sz = size
     cmd = [str(vina_exe)]
+    
+    # Note: Standard Vina doesn't support --maps or --scoring ad4 options
+    # If AD4 mode is requested but vina doesn't support it, fall back to regular vina with box
+    # This ensures docking works even if AD4 maps aren't supported by the vina executable
     if mode == "ad4" and maps_prefix:
+        # Try AD4 maps format first (for modified vina versions that support it)
+        # But if this fails, the caller will detect it and can fall back
         cmd += ["--ligand", str(ligand_file), "--maps", str(maps_prefix), "--scoring", "ad4"]
     else:
+        # Standard Vina format with receptor and search box
         cmd += ["--receptor", str(receptor_file),
                 "--ligand", str(ligand_file),
                 "--center_x", str(cx), "--center_y", str(cy), "--center_z", str(cz),
                 "--size_x", str(sx), "--size_y", str(sy), "--size_z", str(sz),
                 "--scoring", "vina"]
+    
     cmd += ["--exhaustiveness", str(exhaustiveness), "--num_modes", str(num_modes)]
     if seed is not None:
         cmd += ["--seed", str(seed)]
@@ -418,19 +426,98 @@ def _run_one(
             timeout=None if (timeout_s is None or timeout_s == 0) else int(timeout_s)
         )
         with open(log_file, "w", encoding="utf-8") as lf:
+            lf.write(f"Command: {' '.join(cmd)}\n")
+            lf.write(f"Return code: {proc.returncode}\n")
+            lf.write("\n---- STDOUT ----\n")
             if proc.stdout: lf.write(proc.stdout)
-            if proc.stderr: lf.write("\n---- STDERR ----\n"); lf.write(proc.stderr)
+            lf.write("\n---- STDERR ----\n")
+            if proc.stderr: lf.write(proc.stderr)
 
         if proc.returncode != 0:
             missing = _parse_missing_map(proc.stderr or "")
+            error_msg = proc.stderr or proc.stdout or "Unknown error"
+            
+            # Check if the error is because vina doesn't support --maps option
+            # If so, fall back to regular vina with box coordinates
+            if "unknown option maps" in error_msg.lower() or "unknown option" in error_msg.lower():
+                with open(log_file, "a", encoding="utf-8") as lf:
+                    lf.write(f"\n---- WARNING: Vina doesn't support --maps option ----\n")
+                    lf.write(f"Falling back to regular Vina with receptor and search box\n")
+                
+                # Retry with regular vina mode (receptor + box)
+                if mode == "ad4" and maps_prefix:
+                    # Fall back to vina mode with receptor file
+                    cmd = _vina_cmd(vina_exe, "vina", receptor_file, ligand_file, center, size,
+                                  exhaustiveness, num_modes, seed, None, autodock4_exe)
+                    cmd += ["--out", str(out_pdbqt)]
+                    
+                    # Try again with regular vina mode
+                    proc_fallback = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=None if (timeout_s is None or timeout_s == 0) else int(timeout_s)
+                    )
+                    
+                    with open(log_file, "a", encoding="utf-8") as lf:
+                        lf.write(f"\n---- FALLBACK ATTEMPT ----\n")
+                        lf.write(f"Command: {' '.join(cmd)}\n")
+                        lf.write(f"Return code: {proc_fallback.returncode}\n")
+                        if proc_fallback.stdout: lf.write(f"STDOUT: {proc_fallback.stdout}\n")
+                        if proc_fallback.stderr: lf.write(f"STDERR: {proc_fallback.stderr}\n")
+                    
+                    if proc_fallback.returncode == 0 and out_pdbqt.exists() and out_pdbqt.stat().st_size > 0:
+                        # Success with fallback
+                        aff = parse_binding_affinity(out_pdbqt)
+                        nposes = count_poses(out_pdbqt)
+                        if aff not in ("", "N/A") and nposes > 0:
+                            with open(log_file, "a", encoding="utf-8") as lf:
+                                lf.write(f"\n---- FALLBACK SUCCESS ----\n")
+                                lf.write(f"Binding affinity: {aff}\n")
+                                lf.write(f"Number of poses: {nposes}\n")
+                            return (True, aff, nposes, None)
+            
+            # Log original error details
+            with open(log_file, "a", encoding="utf-8") as lf:
+                lf.write(f"\n---- ERROR DETAILS ----\n")
+                lf.write(f"Return code: {proc.returncode}\n")
+                lf.write(f"Missing map: {missing}\n")
+                lf.write(f"Error: {error_msg[:500]}\n")
             return (False, "", 0, missing)
 
-        if not out_pdbqt.exists() or out_pdbqt.stat().st_size == 0:
+        if not out_pdbqt.exists():
+            with open(log_file, "a", encoding="utf-8") as lf:
+                lf.write(f"\n---- ERROR: Output file not created ----\n")
+                lf.write(f"Expected: {out_pdbqt}\n")
+            return (False, "", 0, None)
+
+        if out_pdbqt.stat().st_size == 0:
+            with open(log_file, "a", encoding="utf-8") as lf:
+                lf.write(f"\n---- ERROR: Output file is empty ----\n")
+                lf.write(f"File: {out_pdbqt}\n")
             return (False, "", 0, None)
 
         aff = parse_binding_affinity(out_pdbqt)
         nposes = count_poses(out_pdbqt)
+        
+        # Log parsing results
+        with open(log_file, "a", encoding="utf-8") as lf:
+            lf.write(f"\n---- PARSING RESULTS ----\n")
+            lf.write(f"Binding affinity: {aff}\n")
+            lf.write(f"Number of poses: {nposes}\n")
+        
         if aff in ("", "N/A") or nposes == 0:
+            with open(log_file, "a", encoding="utf-8") as lf:
+                lf.write(f"\n---- WARNING: No valid scores found ----\n")
+                lf.write(f"Affinity: '{aff}' (empty/N/A)\n")
+                lf.write(f"Poses: {nposes}\n")
+                # Try to read first few lines of output file for debugging
+                try:
+                    with open(out_pdbqt, "r", errors="ignore") as f:
+                        first_lines = ''.join(f.readlines()[:20])
+                        lf.write(f"\nFirst 20 lines of output:\n{first_lines}\n")
+                except:
+                    pass
             return (False, "", nposes, None)
 
         return (True, aff, nposes, None)
@@ -464,6 +551,7 @@ def run_vina_batch(
     progress_cb=None,
     maps_prefix: Optional[Path] = None,
     skip_if_output_exists: bool = False,
+    autodock4_exe: Optional[Path] = None,  # For AD4 docking
 ) -> List[dict]:
     out_dir.mkdir(parents=True, exist_ok=True)
     mode = "ad4" if (scoring == "ad4" and maps_prefix) else "vina"
@@ -537,127 +625,243 @@ def run_vina_batch(
 # ==============================
 
 def extract_first_pose_simple(input_pdbqt: Path, output_pdbqt: Path) -> bool:
-    """Extract first pose from multi-model PDBQT (atoms only)"""
+    """Extract first pose from multi-model PDBQT preserving PDBQT directives."""
     try:
-        with open(input_pdbqt, 'r') as f:
+        with open(input_pdbqt, "r") as f:
             lines = f.readlines()
-        
-        with open(output_pdbqt, 'w') as f:
-            in_model = False
-            for line in lines:
-                if line.startswith('MODEL 1'):
+
+        in_model = False
+        pose_lines: List[str] = []
+
+        for line in lines:
+            line = line.replace("\x00", "")
+            if line.startswith("MODEL"):
+                if line.strip().startswith("MODEL 1"):
                     in_model = True
                     continue
-                elif line.startswith('MODEL') and 'MODEL 1' not in line:
+                if in_model:
+                    # next model started; stop after writing
                     break
-                elif line.startswith('ENDMDL'):
-                    break
-                elif in_model and (line.startswith('ATOM') or line.startswith('HETATM')):
-                    f.write(line)
-                elif in_model and line.startswith('TORSDOF'):
-                    f.write(line)
+                continue
+            if line.startswith("ENDMDL"):
+                break
+            if in_model:
+                if line.startswith("REMARK"):
+                    continue
+                pose_lines.append(line)
+
+        if not pose_lines:
+            return False
+
+        with open(output_pdbqt, "w") as f:
+            for ln in pose_lines:
+                f.write(ln)
         return True
     except Exception:
         return False
 
 def extract_all_poses(input_pdbqt: Path, output_dir: Path, max_poses: int = 10) -> List[Path]:
-    """Extract all poses from multi-model PDBQT and save as separate files"""
-    extracted_files = []
+    """Extract all poses from multi-model PDBQT and save as separate files."""
+    extracted_files: List[Path] = []
     try:
-        with open(input_pdbqt, 'r') as f:
+        with open(input_pdbqt, "r") as f:
             lines = f.readlines()
-        
+
         current_pose = 0
-        current_lines = []
+        current_lines: List[str] = []
         in_model = False
-        
+
         for line in lines:
-            if line.startswith('MODEL'):
-                if current_pose > 0 and current_lines:  # Save previous pose
-                    pose_file = output_dir / f"pose_{current_pose}.pdbqt"
-                    with open(pose_file, 'w') as pf:
-                        pf.writelines(current_lines)
-                    extracted_files.append(pose_file)
-                
+            line = line.replace("\x00", "")
+            if line.startswith("MODEL"):
+                if in_model:
+                    # Unexpected nested MODEL, flush existing lines first
+                    if current_lines:
+                        pose_file = output_dir / f"pose_{current_pose}.pdbqt"
+                        with open(pose_file, "w") as pf:
+                            pf.writelines(current_lines)
+                        extracted_files.append(pose_file)
+                        current_lines = []
                 current_pose += 1
                 if current_pose > max_poses:
                     break
-                    
-                current_lines = []
                 in_model = True
+                current_lines = []
                 continue
-            elif line.startswith('ENDMDL'):
+
+            if line.startswith("ENDMDL"):
+                if in_model and current_lines:
+                    pose_file = output_dir / f"pose_{current_pose}.pdbqt"
+                    with open(pose_file, "w") as pf:
+                        pf.writelines(current_lines)
+                    extracted_files.append(pose_file)
                 in_model = False
+                current_lines = []
                 continue
-            elif in_model and (line.startswith('ATOM') or line.startswith('HETATM') or line.startswith('TORSDOF')):
+
+            if in_model:
+                if line.startswith("REMARK"):
+                    continue
                 current_lines.append(line)
-        
-        # Save the last pose if we have one
-        if current_pose > 0 and current_lines:
-            pose_file = output_dir / f"pose_{current_pose}.pdbqt"
-            with open(pose_file, 'w') as pf:
-                pf.writelines(current_lines)
-            extracted_files.append(pose_file)
-        
+
         return extracted_files
     except Exception:
         return []
 
-def parse_smina_atom_terms(atom_terms_file: Path) -> dict:
-    """Parse SMINA atom terms file and return component sums"""
-    
+def parse_smina_atom_terms(
+    atom_terms_file: Path,
+    stdout_text: str,
+    torsion_count: Optional[int]
+) -> Optional[dict]:
+    """Parse SMINA stdout/atom terms and return component breakdown."""
+
+    stdout_text = (stdout_text or "").replace("\x00", "")
+
+    affinity = None
+    intramol = None
+    raw_values: Optional[List[float]] = None
+    collect_raw = False
+
+    # Preload per-atom term sums
+    per_atom_sums = {
+        "gauss1_per_atom": 0.0,
+        "gauss2_per_atom": 0.0,
+        "repulsion_per_atom": 0.0,
+        "hydrophobic_per_atom": 0.0,
+        "hydrogen_bond_per_atom": 0.0,
+    }
+    per_atom_available = False
     try:
-        gauss1 = 0.0
-        gauss2 = 0.0
-        repulsion = 0.0
-        hydrophobic = 0.0
-        h_bond = 0.0
-        
-        with open(atom_terms_file, 'r') as f:
-            lines = f.readlines()[1:]  # Skip header
+        if atom_terms_file.exists():
+            with open(atom_terms_file, "r") as f:
+                lines = f.readlines()[1:]  # skip header
             for line in lines:
-                if line.strip() == 'END':
+                line = line.replace("\x00", "").strip()
+                if not line or line == "END":
                     break
                 parts = line.split()
-                if len(parts) >= 8:
-                    try:
-                        gauss1 += float(parts[4])
-                        gauss2 += float(parts[5])
-                        repulsion += float(parts[6])
-                        hydrophobic += float(parts[7])
-                        h_bond += float(parts[8]) if len(parts) > 8 else 0.0
-                    except ValueError:
-                        continue
-        
-        return {
-            'gauss1': gauss1,
-            'gauss2': gauss2,
-            'repulsion': repulsion,
-            'hydrophobic': hydrophobic,
-            'hydrogen_bond': h_bond
-        }
+                if len(parts) < 8:
+                    continue
+                try:
+                    per_atom_sums["gauss1_per_atom"] += float(parts[3])
+                    per_atom_sums["gauss2_per_atom"] += float(parts[4])
+                    per_atom_sums["repulsion_per_atom"] += float(parts[5])
+                    per_atom_sums["hydrophobic_per_atom"] += float(parts[6])
+                    per_atom_sums["hydrogen_bond_per_atom"] += float(parts[7])
+                    per_atom_available = True
+                except ValueError:
+                    continue
     except Exception:
+        per_atom_available = False
+
+    for line in stdout_text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.lower().startswith("affinity:"):
+            try:
+                affinity = float(line.split()[1])
+            except (ValueError, IndexError):
+                pass
+        elif line.lower().startswith("intramolecular energy:"):
+            try:
+                intramol = float(line.split()[2])
+            except (ValueError, IndexError):
+                pass
+        elif line.startswith("Term values, before weighting"):
+            collect_raw = True
+            continue
+        elif collect_raw and line.startswith("##"):
+            parts = [p for p in line[2:].strip().split() if p]
+            try:
+                raw_values = [float(p) for p in parts]
+            except ValueError:
+                raw_values = None
+            break
+
+    raw_map: Optional[dict] = None
+    if raw_values and len(raw_values) >= 5:
+        raw_map = {
+            "gauss1": raw_values[0],
+            "gauss2": raw_values[1],
+            "repulsion": raw_values[2],
+            "hydrophobic": raw_values[3],
+            "hydrogen_bond": raw_values[4],
+            "num_tors_div": raw_values[5] if len(raw_values) > 5 else 0.0,
+        }
+    elif per_atom_available:
+        raw_map = {
+            "gauss1": per_atom_sums["gauss1_per_atom"],
+            "gauss2": per_atom_sums["gauss2_per_atom"],
+            "repulsion": per_atom_sums["repulsion_per_atom"],
+            "hydrophobic": per_atom_sums["hydrophobic_per_atom"],
+            "hydrogen_bond": per_atom_sums["hydrogen_bond_per_atom"],
+            "num_tors_div": 0.0,
+        }
+
+    if raw_map is None:
         return None
+    if torsion_count is not None:
+        raw_map["num_tors_div"] = float(torsion_count)
+
+    weighted_map = {
+        key: raw_map.get(key, 0.0) * SMINA_TERM_WEIGHTS[key]
+        for key in raw_map
+    }
+
+    total_raw = sum(raw_map.values())
+    total_weighted = sum(weighted_map.values())
+
+    components = {
+        "SMINA_Affinity": affinity,
+        "SMINA_Intramolecular": intramol,
+        "SMINA_Total_Raw": total_raw,
+        "SMINA_Total_Weighted": total_weighted,
+        "SMINA_Num_Torsions": torsion_count,
+        "gauss1_raw": raw_map.get("gauss1", 0.0),
+        "gauss1_coeff": SMINA_TERM_WEIGHTS["gauss1"],
+        "gauss1_weighted": weighted_map.get("gauss1", 0.0),
+        "gauss2_raw": raw_map.get("gauss2", 0.0),
+        "gauss2_coeff": SMINA_TERM_WEIGHTS["gauss2"],
+        "gauss2_weighted": weighted_map.get("gauss2", 0.0),
+        "repulsion_raw": raw_map.get("repulsion", 0.0),
+        "repulsion_coeff": SMINA_TERM_WEIGHTS["repulsion"],
+        "repulsion_weighted": weighted_map.get("repulsion", 0.0),
+        "hydrophobic_raw": raw_map.get("hydrophobic", 0.0),
+        "hydrophobic_coeff": SMINA_TERM_WEIGHTS["hydrophobic"],
+        "hydrophobic_weighted": weighted_map.get("hydrophobic", 0.0),
+        "hydrogen_bond_raw": raw_map.get("hydrogen_bond", 0.0),
+        "hydrogen_bond_coeff": SMINA_TERM_WEIGHTS["hydrogen_bond"],
+        "hydrogen_bond_weighted": weighted_map.get("hydrogen_bond", 0.0),
+        "torsion_raw": raw_map.get("num_tors_div", 0.0),
+        "torsion_coeff": SMINA_TERM_WEIGHTS["num_tors_div"],
+        "torsion_weighted": weighted_map.get("num_tors_div", 0.0),
+    }
+
+    if per_atom_available:
+        components.update(per_atom_sums)
+
+    return components
 
 def parse_ad4_verbose_output(stdout: str) -> dict:
     """Parse AD4 verbose output for energy components"""
     
     result = {
-        'ad4_affinity': None,
-        'ad4_intermolecular': None,
-        'ad4_internal': None,
-        'ad4_torsional': None
+        'AD4_Affinity': None,
+        'AD4_Intermolecular': None,
+        'AD4_Internal': None,
+        'AD4_Torsional': None
     }
     
     for line in stdout.split('\n'):
         if 'Estimated Free Energy of Binding' in line:
-            result['ad4_affinity'] = float(line.split(':')[1].split()[0])
+            result['AD4_Affinity'] = float(line.split(':')[1].split()[0])
         elif '(1) Final Intermolecular Energy' in line:
-            result['ad4_intermolecular'] = float(line.split(':')[1].split()[0])
+            result['AD4_Intermolecular'] = float(line.split(':')[1].split()[0])
         elif '(2) Final Total Internal Energy' in line:
-            result['ad4_internal'] = float(line.split(':')[1].split()[0])
+            result['AD4_Internal'] = float(line.split(':')[1].split()[0])
         elif '(3) Torsional Free Energy' in line:
-            result['ad4_torsional'] = float(line.split(':')[1].split()[0])
+            result['AD4_Torsional'] = float(line.split(':')[1].split()[0])
     
     return result
 
@@ -694,6 +898,33 @@ def hybrid_ad4_smina_single(
         'AD4_Intermolecular': 'N/A',
         'AD4_Internal': 'N/A',
         'AD4_Torsional': 'N/A',
+        'SMINA_Affinity': 'N/A',
+        'SMINA_Intramolecular': 'N/A',
+        'SMINA_Total_Raw': 'N/A',
+        'SMINA_Total_Weighted': 'N/A',
+        'gauss1_raw': 'N/A',
+        'gauss1_coeff': SMINA_TERM_WEIGHTS['gauss1'],
+        'gauss1_weighted': 'N/A',
+        'gauss2_raw': 'N/A',
+        'gauss2_coeff': SMINA_TERM_WEIGHTS['gauss2'],
+        'gauss2_weighted': 'N/A',
+        'repulsion_raw': 'N/A',
+        'repulsion_coeff': SMINA_TERM_WEIGHTS['repulsion'],
+        'repulsion_weighted': 'N/A',
+        'hydrophobic_raw': 'N/A',
+        'hydrophobic_coeff': SMINA_TERM_WEIGHTS['hydrophobic'],
+        'hydrophobic_weighted': 'N/A',
+        'hydrogen_bond_raw': 'N/A',
+        'hydrogen_bond_coeff': SMINA_TERM_WEIGHTS['hydrogen_bond'],
+        'hydrogen_bond_weighted': 'N/A',
+        'torsion_raw': 'N/A',
+        'torsion_coeff': SMINA_TERM_WEIGHTS['num_tors_div'],
+        'torsion_weighted': 'N/A',
+        'gauss1_per_atom': 'N/A',
+        'gauss2_per_atom': 'N/A',
+        'repulsion_per_atom': 'N/A',
+        'hydrophobic_per_atom': 'N/A',
+        'hydrogen_bond_per_atom': 'N/A',
         'gauss1': 'N/A',
         'gauss2': 'N/A',
         'repulsion': 'N/A',
@@ -775,20 +1006,24 @@ def hybrid_ad4_smina_single(
                 if proc_smina.stderr: lf.write("\n---- STDERR ----\n"); lf.write(proc_smina.stderr)
             
             if proc_smina.returncode == 0 and atom_terms_file.exists():
-                components = parse_smina_atom_terms(atom_terms_file)
+                components = parse_smina_atom_terms(atom_terms_file, proc_smina.stdout, n_rot)
                 if components:
-                    # Calculate total score (more negative = better)
-                    total_score = (components.get('gauss1', 0) + components.get('gauss2', 0) + 
-                                 components.get('repulsion', 0) + components.get('hydrophobic', 0) + 
-                                 components.get('hydrogen_bond', 0) + result['N_rot_contribution'])
-                    
-                    if total_score < best_score:
-                        best_score = total_score
+                    metric = components.get('SMINA_Affinity')
+                    if not isinstance(metric, (int, float)):
+                        metric = components.get('SMINA_Total_Weighted')
+                    if isinstance(metric, (int, float)) and metric < best_score:
+                        best_score = metric
                         best_components = components
                         best_pose = i
         
         if best_components:
             result.update(best_components)
+            # Backwards compatibility: populate legacy shorthand columns
+            result['gauss1'] = best_components.get('gauss1_weighted', 'N/A')
+            result['gauss2'] = best_components.get('gauss2_weighted', 'N/A')
+            result['repulsion'] = best_components.get('repulsion_weighted', 'N/A')
+            result['hydrophobic'] = best_components.get('hydrophobic_weighted', 'N/A')
+            result['hydrogen_bond'] = best_components.get('hydrogen_bond_weighted', 'N/A')
             result['Best_Pose'] = best_pose
             result['Status'] = 'Success'
         else:
@@ -1093,7 +1328,7 @@ def run_endogenous_preset_ad4(preset_key: str, headless: bool = False) -> List[d
         max_retries=int(max_retries),
         exhu_backoff=float(exhu_backoff),
         modes_backoff=float(modes_backoff),
-        progress_cb=_cb,
+        progress_cb=(_cb if not headless else None),
         maps_prefix=maps_prefix,
         skip_if_output_exists=bool(skip_exists),
     )
@@ -1192,6 +1427,45 @@ if __name__ == "__main__":
     _run_cli()
 
 # ==============================
+# Setup: Ensure Linux executables have execute permissions
+# ==============================
+import stat
+_setup_script = Path(__file__).parent / "setup_executables.py"
+if _setup_script.exists():
+    try:
+        exec(open(_setup_script).read())
+    except Exception:
+        pass  # Silently fail if setup script has issues
+
+# Also directly fix permissions on startup - more aggressive approach
+_files_gui_setup = Path(__file__).parent / "Files_for_GUI"
+if _files_gui_setup.exists():
+    for exe_name in ["vina", "autogrid4", "autodock4"]:
+        exe_path = _files_gui_setup / exe_name
+        if exe_path.exists() and not exe_path.is_dir():
+            try:
+                # Try multiple methods to ensure execute permissions
+                # Method 1: Add execute bits
+                current_stat = exe_path.stat()
+                new_mode = current_stat.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+                os.chmod(exe_path, new_mode)
+                
+                # Method 2: Set explicit 755 permissions
+                try:
+                    os.chmod(exe_path, 0o755)
+                except:
+                    pass
+                
+                # Method 3: Use subprocess to chmod if available
+                try:
+                    subprocess.run(["chmod", "+x", str(exe_path)], 
+                                 capture_output=True, timeout=2, check=False)
+                except:
+                    pass
+            except Exception:
+                pass  # Silently fail if we can't set permissions
+
+# ==============================
 # Streamlit UI
 # ==============================
 
@@ -1235,22 +1509,24 @@ with st.expander("⚙️ Configuration", expanded=True):
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("Executables & Scripts")
-        backend = st.radio(
-            "Docking backend",
-            ["Vina (box)", "AD4 maps (AutoGrid4/AD4Zn)"],
-            index=1,
-        )
-
+        backend = st.radio("Docking backend", [
+            "Vina (box)",
+            "AD4 + SMINA (hybrid)"
+        ], index=1)
         if backend == "Vina (box)":
-            st.info("📦 **Vina (box) mode:** Uses standard Vina scoring with the defined search box.")
-            autodetect = st.checkbox("Auto-detect metal center", value=True)
+            st.info("📦 **Vina (box):** standard Vina docking using the search box you define.")
         else:
-            st.info("🗺️ **AD4 maps mode:** Runs AutoDock4 with prebuilt maps (recommended for metalloproteins).")
-            autodetect = False
+            st.info(
+                "🔄 **AD4 + SMINA hybrid:** Docks with AD4 (zinc maps) then scores poses with SMINA "
+                "to produce the full component breakdown."
+            )
 
         # Auto-detect executables and parameters from Files_for_GUI (no user input needed)
         files_gui_dir = work_dir / "Files_for_GUI"
         import sys
+        autodetect = False
+        if backend == "Vina (box)":
+            autodetect = st.checkbox("Auto-detect metal center (for Vina run)", value=True)
 
     with c2:
         st.subheader("Grid Box Settings")
@@ -1294,7 +1570,7 @@ with st.expander("⚙️ Configuration", expanded=True):
 st.subheader("Docking Parameters")
 p1, p2, p3, p4 = st.columns(4)
 with p1:
-    scoring = "ad4" if backend == "AD4 maps (AutoGrid4/AD4Zn)" else "vina"
+    scoring = "ad4" if backend == "AD4 + SMINA (hybrid)" else "vina"
     st.markdown(f"**Scoring function:** `{scoring}`")
 with p2:
     base_exhaustiveness = st.number_input("Base exhaustiveness", value=64, min_value=1, step=1)
@@ -1352,13 +1628,6 @@ else:
         # Fallback: try autogrid4.exe in case it's there
         autogrid_exe = (files_gui_dir / "autogrid4.exe").resolve() if (files_gui_dir / "autogrid4.exe").exists() else None
 
-try:
-    vina_exe = _ensure_executable(vina_exe, work_dir, "_vina_bin")
-    autogrid_exe = _ensure_executable(autogrid_exe, work_dir, "_autogrid_bin")
-except PermissionError as exec_exc:
-    st.error(str(exec_exc))
-    st.stop()
-
 python_exe = Path(sys.executable)
 zinc_pseudo_py = (files_gui_dir / "zinc_pseudo.py").resolve() if (files_gui_dir / "zinc_pseudo.py").exists() else None
 base_params = (files_gui_dir / "AD4_parameters.dat").resolve() if (files_gui_dir / "AD4_parameters.dat").exists() else None
@@ -1399,7 +1668,7 @@ elif receptor_input_mode == "Local path" and receptor_local_path:
 
 # Test executables
 if test_btn:
-    if vina_exe and Path(vina_exe).exists():
+    if vina_exe and vina_exe.exists():
         try:
             p = subprocess.run([str(vina_exe), "--help"], capture_output=True, text=True, timeout=10)
             st.success("Vina reachable.")
@@ -1409,17 +1678,15 @@ if test_btn:
     else:
         st.error(f"Vina not found in Files_for_GUI: {files_gui_dir / 'vina.exe'}")
 
-    if backend == "AD4 maps (AutoGrid4/AD4Zn)":
-        for name, exe in [("AutoGrid4", autogrid_exe), ("Python", python_exe)]:
-            exe_path = Path(exe) if exe else None
-            if exe_path and exe_path.exists():
-                st.info(f"{name} OK: {exe_path}")
-            else:
-                st.error(f"{name} not found in Files_for_GUI.")
-        for name, pth in [("zinc_pseudo.py", zinc_pseudo_py), ("AD4_parameters.dat", base_params), ("AD4Zn.dat (extra)", extra_params)]:
-            status = "✅" if (pth and pth.exists()) else "❌"
-            loc = pth if pth else f"{files_gui_dir / name}"
-            st.write(f"{name}: {loc} {status}")
+    for name, exe in [("AutoGrid4", autogrid_exe), ("Python", python_exe)]:
+        if exe and exe.exists():
+            st.info(f"{name} OK: {exe}")
+        else:
+            st.error(f"{name} not found in Files_for_GUI.")
+    for name, pth in [("zinc_pseudo.py", zinc_pseudo_py), ("AD4_parameters.dat", base_params), ("AD4Zn.dat (extra)", extra_params)]:
+        status = "✅" if (pth and pth.exists()) else "❌"
+        loc = pth if pth else f"{files_gui_dir / name}"
+        st.write(f"{name}: {loc} {status}")
 
 # ==============================
 # AD4 maps builder / updater (auto-detect all ligand types, force-include extras, patch missing)
@@ -1428,6 +1695,9 @@ if test_btn:
 if build_maps_btn:
     # Pre-validation checks
     st.info("🔍 **Pre-validation checks...**")
+    if backend != "AD4 + SMINA (hybrid)":
+        st.error("❌ **Backend mismatch:** switch to 'AD4 + SMINA (hybrid)' to build maps.")
+        st.stop()
     
     # Check receptor file
     if receptor_path is None or not receptor_path.exists():
@@ -1449,11 +1719,7 @@ if build_maps_btn:
     maps_dir = maps_prefix.parent
     maps_dir.mkdir(parents=True, exist_ok=True)
 
-    if backend != "AD4 maps (AutoGrid4/AD4Zn)":
-        st.error("❌ **Backend Mismatch:** You need to use 'AD4 maps (AutoGrid4/AD4Zn)' backend to build maps.")
-        st.info("💡 **Solution:** Go to the Configuration section above and select 'AD4 maps (AutoGrid4/AD4Zn)' as your docking backend, then try building maps again.")
-        st.stop()
-    elif not (autogrid_exe and autogrid_exe.exists()):
+    if not (autogrid_exe and autogrid_exe.exists()):
         st.error("AutoGrid4 executable path is missing.")
     elif receptor_path is None or not receptor_path.exists():
         st.error("Receptor is missing.")
@@ -1588,15 +1854,9 @@ if build_maps_btn:
 run_btn = st.button("🚀 Run Docking", type="primary")
 
 if run_btn:
-    if not vina_exe or not Path(vina_exe).exists():
-        print(f"ERROR: vina executable not found at {vina_exe}")
-        sys.exit(1)
-    if not autogrid_exe or not Path(autogrid_exe).exists():
-        print(f"ERROR: autogrid4 executable not found at {autogrid_exe}")
-        sys.exit(1)
-    if not base_params.exists():
-        print(f"ERROR: AD4_parameters.dat not found at {base_params}")
-        sys.exit(1)
+    if not vina_exe.exists():
+        st.error("Vina executable not found.")
+        st.stop()
     if receptor_path is None or not receptor_path.exists():
         st.error("Receptor file missing/invalid.")
         st.stop()
@@ -1605,7 +1865,7 @@ if run_btn:
         st.stop()
 
     cx, cy, cz = float(center_x), float(center_y), float(center_z)
-    if scoring == "vina" and autodetect:
+    if autodetect:
         auto = autodetect_metal_center(receptor_path)
         if auto:
             cx, cy, cz = auto
@@ -1619,10 +1879,9 @@ if run_btn:
         prog.progress(i / n, text=f"{i}/{n} {name} — {stat}")
         console.write(f"{i}/{n}  {name}: {stat}")
 
-    maps_prefix = Path(maps_prefix_input).expanduser().resolve() if (scoring == "ad4") else None
+    maps_prefix = Path(maps_prefix_input).expanduser().resolve() if backend == "AD4 + SMINA (hybrid)" else None
 
-    # If AD4 selected, assert maps exist for all ligand atom types; if missing, tell the user exactly which
-    if scoring == "ad4":
+    if backend == "AD4 + SMINA (hybrid)":
         required_types = sorted(ligand_types_union(ligand_paths) or {"C","F","OA","S","NA"})
         have = list_maps_present(maps_prefix)
         base_req = [
@@ -1642,42 +1901,94 @@ if run_btn:
     tm_mode_key = "no_timeout" if timeout_mode.startswith("No timeout") else "soft_timeout"
 
     with st.spinner("Running docking…"):
-        rows = run_vina_batch(
-            vina_exe=Path(vina_exe),
-            receptor_file=receptor_path,
-            ligand_files=ligand_paths,
-            out_dir=out_dir,
-            center=(cx, cy, cz),
-            size=(float(size_x), float(size_y), float(size_z)),
-            scoring=scoring,
-            base_exhaustiveness=int(base_exhaustiveness),
-            base_num_modes=int(base_num_modes),
-            timeout_mode=tm_mode_key,
-            timeout_s=int(timeout_s),
-            max_retries=int(max_retries),
-            exhu_backoff=float(exhu_backoff),
-            modes_backoff=float(modes_backoff),
-            progress_cb=_cb,
-            maps_prefix=maps_prefix if scoring == "ad4" else None,
-            skip_if_output_exists=bool(skip_exists),
-        )
+        if backend == "AD4 + SMINA (hybrid)":
+            rows = run_hybrid_batch(
+                vina_exe=vina_exe,
+                receptor_file=receptor_path,
+                ligand_files=ligand_paths,
+                out_dir=out_dir,
+                center=(cx, cy, cz),
+                size=(float(size_x), float(size_y), float(size_z)),
+                exhaustiveness=int(base_exhaustiveness),
+                num_modes=int(base_num_modes),
+                maps_prefix=maps_prefix,
+                progress_cb=_cb,
+                timeout_s=int(timeout_s)
+            )
+            hybrid_rows = rows
+            vina_rows: List[dict] = []
+        else:
+            rows = run_vina_batch(
+                vina_exe=vina_exe,
+                receptor_file=receptor_path,
+                ligand_files=ligand_paths,
+                out_dir=out_dir,
+                center=(cx, cy, cz),
+                size=(float(size_x), float(size_y), float(size_z)),
+                scoring="vina",
+                base_exhaustiveness=int(base_exhaustiveness),
+                base_num_modes=int(base_num_modes),
+                timeout_mode=tm_mode_key,
+                timeout_s=int(timeout_s),
+                max_retries=int(max_retries),
+                exhu_backoff=float(exhu_backoff),
+                modes_backoff=float(modes_backoff),
+                progress_cb=_cb,
+                maps_prefix=None,
+                skip_if_output_exists=bool(skip_exists),
+            )
+            vina_rows = rows
+            hybrid_rows: List[dict] = []
 
     df = pd.DataFrame(rows)
     st.success("Docking complete.")
-    st.dataframe(df, width="stretch")
+    st.dataframe(df, use_container_width=True)
 
-    if scoring == "ad4":
-        st.subheader("🧲 AD4 Summary")
+    # Quick stats
+    if backend == "AD4 + SMINA (hybrid)":
+        st.subheader("📊 Hybrid Analysis Results")
+        hybrid_success = [r for r in hybrid_rows if r.get('Status') == 'Success']
+        st.write(f"**Hybrid successes:** {len(hybrid_success)}/{len(hybrid_rows)} ligands")
+        if hybrid_success:
+            comp_df = pd.DataFrame(hybrid_success)
+            display_cols = [
+                'Ligand',
+                'AD4_Affinity', 'AD4_Intermolecular', 'AD4_Internal', 'AD4_Torsional',
+                'SMINA_Affinity', 'SMINA_Intramolecular', 'SMINA_Total_Weighted',
+                'gauss1_raw', 'gauss1_coeff', 'gauss1_weighted',
+                'gauss2_raw', 'gauss2_coeff', 'gauss2_weighted',
+                'repulsion_raw', 'repulsion_coeff', 'repulsion_weighted',
+                'hydrophobic_raw', 'hydrophobic_coeff', 'hydrophobic_weighted',
+                'hydrogen_bond_raw', 'hydrogen_bond_coeff', 'hydrogen_bond_weighted',
+                'torsion_raw', 'torsion_coeff', 'torsion_weighted',
+                'SMINA_Num_Torsions',
+                'gauss1_per_atom', 'gauss2_per_atom', 'repulsion_per_atom',
+                'hydrophobic_per_atom', 'hydrogen_bond_per_atom',
+                'Num_Poses', 'Best_Pose'
+            ]
+            available_cols = [c for c in display_cols if c in comp_df.columns]
+            if available_cols:
+                st.write("**Individual Scoring Components:**")
+                st.dataframe(comp_df[available_cols], use_container_width=True)
+            try:
+                ad4_affs = [float(r['AD4_Affinity']) for r in hybrid_success if r['AD4_Affinity'] not in ('N/A', None, '')]
+                if ad4_affs:
+                    st.write(f"**AD4 Binding Affinities:** {min(ad4_affs):.2f} to {max(ad4_affs):.2f} kcal/mol")
+                gauss1_vals = [float(r['gauss1_weighted']) for r in hybrid_success if r.get('gauss1_weighted') not in ('N/A', None, '')]
+                if gauss1_vals:
+                    avg_g1 = sum(gauss1_vals) / len(gauss1_vals)
+                    st.write(f"**Average gauss1 (weighted):** {avg_g1:.2f} kcal/mol")
+            except Exception:
+                pass
     else:
         st.subheader("📦 Vina Summary")
-
-    try:
-        aff = [float(r["Binding_Affinity"]) for r in rows if r.get("Binding_Affinity") not in ("", "N/A", None)]
-        if aff:
-            st.write(f"Binding affinities range: {min(aff):.1f} to {max(aff):.1f} kcal/mol")
-            st.write(f"Average binding affinity: {sum(aff)/len(aff):.1f} kcal/mol")
-    except Exception:
-        pass
+        try:
+            vina_affs = [float(r["Binding_Affinity"]) for r in rows if r.get("Binding_Affinity") not in ("", "N/A")]
+            if vina_affs:
+                st.write(f"**Binding affinities range:** {min(vina_affs):.1f} to {max(vina_affs):.1f} kcal/mol")
+                st.write(f"**Average binding affinity:** {sum(vina_affs)/len(vina_affs):.1f} kcal/mol")
+        except Exception:
+            pass
 
     st.download_button(
         "⬇️ Download results CSV",
@@ -1694,8 +2005,8 @@ if run_btn:
         )
 
 st.caption(
-    """Tips:
-• If you see "Affinity map for atom type X is not present", click **Build/Update AD4 maps** with X in Force-include.
-• The app now scans **all ligands** to decide which maps to make, and prints per-ligand **Score** or **missing map** in the console.
-• Use **No timeout** for tough ligands; or enable soft timeouts with retries/backoff."""
+    "Tips:\n"
+    "• If you see “Affinity map for atom type X is not present”, click **Build/Update AD4 maps** with X in Force-include.\n"
+    "• The app now scans **all ligands** to decide which maps to make, and prints per-ligand **Score** or **missing map** in the console.\n"
+    "• Use **No timeout** for tough ligands; or enable soft timeouts with retries/backoff."
 )
