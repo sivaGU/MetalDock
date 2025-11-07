@@ -25,6 +25,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+import stat
 
 import streamlit as st
 
@@ -136,11 +137,26 @@ class DockingOutputs:
     metadata: Dict[str, str]
 
 
+def _ensure_exec_permission(path: Path) -> None:
+    try:
+        current_mode = path.stat().st_mode
+        desired_mode = current_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH
+        if desired_mode != current_mode:
+            path.chmod(desired_mode)
+    except PermissionError as exc:
+        raise DockingError(
+            f"Unable to mark executable: {path}. "
+            "Run `chmod +x` manually and ensure you have write permissions."
+        ) from exc
+
+
 def _check_executable(path: Path) -> None:
     if not path.exists():
         raise DockingError(f"Executable not found: {path}")
     if not os.access(path, os.X_OK):
-        raise DockingError(f"Executable is not marked as runnable: {path}")
+        _ensure_exec_permission(path)
+        if not os.access(path, os.X_OK):
+            raise DockingError(f"Executable is not marked as runnable: {path}")
 
 
 def _ensure_binaries() -> Dict[str, Path]:
