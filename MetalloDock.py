@@ -1,3 +1,26 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import os
+import io
+import csv
+import math
+import shutil
+import zipfile
+import random
+import subprocess
+import platform
+import stat
+from pathlib import Path
+from typing import List, Tuple, Optional, Set, Dict
+
+REPO_ROOT = Path(__file__).resolve().parent
+
+import streamlit as st
+import pandas as pd
+import argparse
+import sys
+
 # Demo preset defaults
 DEMO_PRESETS: Dict[str, Dict[str, Tuple[float, float, float]]] = {
     "Carbonic Anhydrase I": {
@@ -21,28 +44,6 @@ DEMO_PARAM_DEFAULTS = {
     "exhaustiveness_retry": 1.50,
     "num_modes_retry": 1.25,
 }
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-import os
-import io
-import csv
-import math
-import shutil
-import zipfile
-import random
-import subprocess
-import platform
-import stat
-from pathlib import Path
-from typing import List, Tuple, Optional, Set, Dict
-
-REPO_ROOT = Path(__file__).resolve().parent
-
-import streamlit as st
-import pandas as pd
-import argparse
-import sys
 
 def render_home_page():
     st.header("Welcome to MetalloDock")
