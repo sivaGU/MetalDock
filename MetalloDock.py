@@ -1233,6 +1233,8 @@ if page == "Documentation":
     render_documentation_page()
     st.stop()
 
+page_mode = "generic"
+
 if page == "MetalloDock Demo":
     page_mode = "demo"
 elif page == "Standard AutoDock Vina Docking":
@@ -1282,12 +1284,18 @@ if page_mode == "demo":
         st.error("No ligands found in `MetalloDock Receptors and Ligands/18 PFAS`. Add the sample PFAS ligands to run the demo.")
         ligand_paths = []
     else:
-        selected_labels = st.multiselect(
-            "Select ligand(s)",
-            ligand_labels,
-            default=ligand_labels,
-            key="demo_ligand_select"
-        )
+        st.markdown("**Select ligand(s)**")
+        previous_selection = st.session_state.get("demo_ligand_selection", list(ligand_labels))
+        selected_labels = []
+        for lig_name in ligand_labels:
+            checked = st.checkbox(
+                lig_name,
+                value=lig_name in previous_selection,
+                key=f"demo_ligand_checkbox_{lig_name}"
+            )
+            if checked:
+                selected_labels.append(lig_name)
+        st.session_state["demo_ligand_selection"] = selected_labels
         ligand_lookup = {p.name: p for p in ligand_files}
         ligand_paths = [ligand_lookup[name] for name in selected_labels if name in ligand_lookup]
         if not ligand_paths:
@@ -1397,28 +1405,29 @@ with st.expander("Configuration", expanded=True):
         }
         spacing_key = f"{page_mode}_spacing"
 
+        default_center = grid_defaults["center"]
+        default_size = grid_defaults["size"]
+        default_spacing = grid_defaults["spacing"]
+
         if page_mode == "demo":
             receptor_state_key = f"{page_mode}_selected_receptor"
             if st.session_state.get(receptor_state_key) != demo_selected_receptor:
                 st.session_state[receptor_state_key] = demo_selected_receptor
-                st.session_state[center_keys["x"]] = grid_defaults["center"][0]
-                st.session_state[center_keys["y"]] = grid_defaults["center"][1]
-                st.session_state[center_keys["z"]] = grid_defaults["center"][2]
-                st.session_state[size_keys["x"]] = grid_defaults["size"][0]
-                st.session_state[size_keys["y"]] = grid_defaults["size"][1]
-                st.session_state[size_keys["z"]] = grid_defaults["size"][2]
-                st.session_state[spacing_key] = grid_defaults["spacing"]
+                for idx, axis in enumerate(["x", "y", "z"]):
+                    st.session_state[center_keys[axis]] = default_center[idx]
+                    st.session_state[size_keys[axis]] = default_size[idx]
+                st.session_state[spacing_key] = default_spacing
                 st.session_state[f"{page_mode}_maps_prefix"] = maps_prefix_default
         else:
             for idx, axis in enumerate(["x", "y", "z"]):
-                key = center_keys[axis]
-                if key not in st.session_state:
-                    st.session_state[key] = grid_defaults["center"][idx]
-                key = size_keys[axis]
-                if key not in st.session_state:
-                    st.session_state[key] = grid_defaults["size"][idx]
+                center_key = center_keys[axis]
+                size_key = size_keys[axis]
+                if center_key not in st.session_state:
+                    st.session_state[center_key] = default_center[idx]
+                if size_key not in st.session_state:
+                    st.session_state[size_key] = default_size[idx]
             if spacing_key not in st.session_state:
-                st.session_state[spacing_key] = grid_defaults["spacing"]
+                st.session_state[spacing_key] = default_spacing
             if f"{page_mode}_maps_prefix" not in st.session_state:
                 st.session_state[f"{page_mode}_maps_prefix"] = maps_prefix_default
 
