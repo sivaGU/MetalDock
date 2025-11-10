@@ -1336,17 +1336,25 @@ if page_mode == "demo":
             ligand_files = sorted(DEMO_LIGAND_SOURCE_DIR.rglob("*.pdbqt"))
     ligand_labels = [p.name for p in ligand_files]
     if not ligand_labels:
-        if DEMO_LIGAND_SOURCE_DIR.exists():
-            st.error(
-                "No ligands found in the demo ligands folder. Expected .pdbqt files under "
-                f"`{DEMO_LIGAND_SOURCE_DIR}`."
-            )
-        else:
-            st.error(
-                "Demo ligands folder not found. Ensure one of these folders is present: "
-                + ", ".join(str(p) for p in DEMO_LIGAND_DIR_CANDIDATES)
-            )
+        st.warning(
+            "No bundled ligands detected. Upload ligands below to continue."
+        )
         ligand_paths = []
+        uploaded_demo_ligands = st.file_uploader(
+            "Upload ligand PDBQT files",
+            type=["pdbqt"],
+            accept_multiple_files=True,
+            key="demo_ligand_upload"
+        )
+        if uploaded_demo_ligands:
+            demo_ligand_dir = demo_assets_dir / "ligands"
+            demo_ligand_dir.mkdir(parents=True, exist_ok=True)
+            for uploaded in uploaded_demo_ligands:
+                dst = demo_ligand_dir / uploaded.name
+                dst.write_bytes(uploaded.getbuffer())
+                ligand_paths.append(dst)
+        if not ligand_paths:
+            st.stop()
     else:
         st.markdown("**Select ligand(s)**")
         default_selection = st.session_state.get("demo_ligand_selection", [])
