@@ -16,9 +16,19 @@ from typing import List, Tuple, Optional, Set, Dict
 
 REPO_ROOT = Path(__file__).resolve().parent
 DEMO_ASSETS_DIR = REPO_ROOT / "MetalloDock Receptors and Ligands"
-CAI_RECEPTOR = DEMO_ASSETS_DIR / "Carbonic_Anhydrase_I.pdbqt"
-CAII_RECEPTOR = DEMO_ASSETS_DIR / "Carbonic_Anhydrase_II.pdbqt"
-PFAS_LIGANDS_DIR = DEMO_ASSETS_DIR / "18 PFAS"
+DEMO_RECEPTOR_SETTINGS = {
+    "Carbonic Anhydrase I (7Q0D)": {
+        "path": DEMO_ASSETS_DIR / "Carbonic_Anhydrase_I.pdbqt",
+        "center": (29.951, 0.420, -4.735),
+        "size": (16.0, 18.0, 16.0),
+    },
+    "Carbonic Anhydrase II (2VVB)": {
+        "path": DEMO_ASSETS_DIR / "Carbonic_Anhydrase_II.pdbqt",
+        "center": (-6.421, 0.342, 17.256),
+        "size": (20.0, 20.0, 20.0),
+    },
+}
+DEMO_LIGAND_SOURCE_DIR = DEMO_ASSETS_DIR / "18 PFAS"
 
 import streamlit as st
 import pandas as pd
@@ -1263,27 +1273,19 @@ st.caption(f"Using working directory: `{work_dir}`")
 # Receptor and Ligand Setup
 if page_mode == "demo":
     st.subheader("Select Receptor & Ligands")
-    if not DEMO_RECEPTOR_SOURCES["Carbonic Anhydrase I (7Q0D)"].exists() or not DEMO_LIGAND_SOURCE_DIR.exists():
+    if not DEMO_RECEPTOR_SETTINGS["Carbonic Anhydrase I (7Q0D)"]["path"].exists() or not DEMO_LIGAND_SOURCE_DIR.exists():
         st.error("Demo assets folder missing. Ensure `MetalloDock Receptors and Ligands/` is included in the repo.")
-    demo_receptors = {
-        name: {
-            "path": path,
-            "center": (29.951, 0.420, -4.735) if "I" in name else (-6.421, 0.342, 17.256),
-            "size": (16.0, 18.0, 16.0) if "I" in name else (20.0, 20.0, 20.0),
-        }
-        for name, path in DEMO_RECEPTOR_SOURCES.items()
-    }
     receptor_choice = st.selectbox(
         "Select receptor",
-        list(demo_receptors.keys()),
+        list(DEMO_RECEPTOR_SETTINGS.keys()),
         key="demo_receptor_choice"
     )
     demo_selected_receptor = receptor_choice
-    receptor_info = demo_receptors[receptor_choice]
+    receptor_info = DEMO_RECEPTOR_SETTINGS[receptor_choice]
     demo_assets_dir = work_dir / "MetalloDock_demo_assets"
     demo_assets_dir.mkdir(parents=True, exist_ok=True)
     demo_receptor_dst = demo_assets_dir / receptor_info["path"].name
-    ligand_files = sorted(PFAS_LIGANDS_DIR.glob("*.pdbqt"))
+    ligand_files = sorted(DEMO_LIGAND_SOURCE_DIR.glob("*.pdbqt"))
     ligand_labels = [p.name for p in ligand_files]
     if st.button("Prepare demo receptor & ligands", key="demo_prepare"):
         shutil.copy2(receptor_info["path"], demo_receptor_dst)
@@ -1330,12 +1332,15 @@ if page_mode == "demo":
             missing = [p for p in ligand_paths if not p.exists()]
             if missing:
                 for missing_path in missing:
-                    src = PFAS_LIGANDS_DIR / missing_path.name
+                    src = DEMO_LIGAND_SOURCE_DIR / missing_path.name
                     if src.exists():
                         shutil.copy2(src, missing_path)
                 st.warning("One or more demo ligands were missing; they have been restored in the working directory.")
         if not receptor_path.exists():
             shutil.copy2(receptor_info["path"], receptor_path)
+        st.session_state["demo_receptor_choice"] = receptor_choice
+        st.session_state["demo_receptor_path"] = str(receptor_path)
+        st.session_state["demo_ligand_paths"] = [str(p) for p in ligand_paths]
 else:
     st.subheader("Upload Receptor & Ligands")
     upload_col1, upload_col2 = st.columns(2)
@@ -1394,6 +1399,31 @@ if page_mode != "demo":
         receptor_path = Path(receptor_local_path).expanduser().resolve()
 else:
     receptor_path = existing_receptor_path
+
+if page_mode == "demo":
+    stored_choice = st.session_state.get("demo_receptor_choice")
+    stored_receptor_path = st.session_state.get("demo_receptor_path")
+    if stored_receptor_path:
+        receptor_candidate = Path(stored_receptor_path)
+        if not receptor_candidate.exists() and stored_choice in DEMO_RECEPTOR_SETTINGS:
+            receptor_src = DEMO_RECEPTOR_SETTINGS[stored_choice]["path"]
+            receptor_candidate.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(receptor_src, receptor_candidate)
+        receptor_path = receptor_candidate
+    stored_ligand_paths = st.session_state.get("demo_ligand_paths")
+    if stored_ligand_paths:
+        recovered_paths = []
+        for lp in stored_ligand_paths:
+            ligand_path_obj = Path(lp)
+            if not ligand_path_obj.exists():
+                src = DEMO_LIGAND_SOURCE_DIR / ligand_path_obj.name
+                if src.exists():
+                    ligand_path_obj.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, ligand_path_obj)
+            if ligand_path_obj.exists():
+                recovered_paths.append(ligand_path_obj)
+        if recovered_paths:
+            ligand_paths = recovered_paths
 
 if page_mode == "demo":
     allowed_backends = ["Vina (box)", "AD4 (maps)"]
