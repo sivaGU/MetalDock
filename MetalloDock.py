@@ -2199,7 +2199,7 @@ def _display_results_table(rows: List[dict], backend: str, out_dir: Path, ad4_ro
             )
 
 
-def _process_docking_task():
+def _process_docking_task() -> None:
     task = st.session_state.get("docking_task")
     if not task:
         return
@@ -2229,8 +2229,6 @@ def _process_docking_task():
         st.session_state["stop_requested"] = False
         return
 
-    progress = st.progress(idx / total if total else 0)
-
     if idx >= total:
         st.session_state["docking_results"] = task["rows"]
         st.session_state["docking_results_backend"] = backend
@@ -2238,7 +2236,6 @@ def _process_docking_task():
         st.session_state["docking_results_out_dir"] = task["out_dir"]
         st.session_state["docking_status_message"] = ("success", "Docking complete.")
         st.session_state["docking_task"] = None
-        st.experimental_rerun()
         return
 
     ligand_path = ligands[idx]
@@ -2281,8 +2278,8 @@ def _process_docking_task():
             task["ad4_rows"].extend(rows)
 
     task["index"] += 1
-    progress.progress(task["index"] / total)
     st.session_state["docking_task"] = task
+    st.session_state["docking_status_message"] = ("info", f"Processed {task['index']} of {total} ligand(s)…")
 
     if task["index"] >= total:
         st.session_state["docking_results"] = task["rows"]
@@ -2291,5 +2288,6 @@ def _process_docking_task():
         st.session_state["docking_results_out_dir"] = task["out_dir"]
         st.session_state["docking_status_message"] = ("success", "Docking complete.")
         st.session_state["docking_task"] = None
+        return
 
     st.experimental_rerun()
