@@ -85,102 +85,96 @@ def render_home_page():
     )
 
 def render_documentation_page():
-    st.header("Personalized Cancer Vaccine Design — Documentation")
+    st.header("MetalloDock — Documentation")
     st.write(
-        "Welcome to the documentation tab! Below you'll find a detailed, step-by-step guide "
-        "to what each section of the workflow does and how to use it."
+        "Welcome to the documentation tab! Below is a detailed, step-by-step guide to the "
+        "MetalloDock workflow so you know what each section does and how to use it effectively."
     )
 
-    st.subheader("① Generate Aggregated MHC Files")
+    st.subheader("① Prepare Your Workspace")
     st.markdown(
-        "**1. Upload your .CSV output file from Partek Flow.**\n"
-        "Parses the Partek Flow variant report, filters to coding point mutations, removes nonsense variants, "
-        "groups mutations by gene, and sorts genes by mutation count."
+        "**1. Choose a working directory.**\\n"
+        "MetalloDock creates `prepared_ligands/`, `ad4_maps/`, and `outputs/` inside the folder you set. "
+        "If you run on Streamlit Cloud, the directory defaults to `/mount/src/metallodock/`."
     )
     st.markdown(
-        "**How it works:**\n"
-        "- Read the uploaded CSV and keep rows whose Gene section contains `Exon`.\n"
-        "- Require a non-null amino-acid change and exclude nonsense (`*`) mutations.\n"
-        "- Group by Gene ID, collect AA changes into lists, and sort genes by mutation count (descending).\n"
-        "- Return the ordered gene list for downstream epitope collection."
-    )
-
-    st.markdown(
-        "**2. Select your vaccine design module.**\n"
-        "Choose between two AutoEpiCollect 2.0 pathways:\n"
-        "- *Module 1*: Cross-check filtered genes against the Human Protein Atlas for carcinogenic activity (generalized workflow).\n"
-        "- *Module 2*: Enter a cancer subtype; the app queries COSMIC and keeps genes overlapping the top-20 mutations for that subtype."
-    )
-    st.markdown(
-        "Once the CSV is processed:\n"
-        "- *Module 1* lets you select how many genes move forward.\n"
-        "- *Module 2* prompts for the cancer subtype of interest."
+        "**2. Review the navigation tabs.**\\n"
+        "- *Demo*: AD4 workflow with carbonic anhydrase presets.\\n"
+        "- *Standard AutoDock*: Vina box docking.\\n"
+        "- *Metalloprotein Docking*: Manual AD4 configuration."
     )
 
+    st.subheader("② Provide Receptor & Ligands")
     st.markdown(
-        "**3. Choose MHC class(es) and additional epitope characteristics.**\n"
-        "Select MHC Class I, Class II, or both. Class I targets CD8⁺ T cells; Class II targets CD4⁺ T cells.\n"
-        "Baseline characteristics (binding affinity, immunogenicity, allergenicity) are always collected. "
-        "Optionally add:"
+        "**1. Upload a receptor (PDBQT).**\\n"
+        "Use the uploader or a path. MetalloDock normalizes oxygen labels (O → OA) and keeps coordinates intact."
     )
     st.markdown(
-        "- **Aliphatic Index** — Proxy for peptide stability (ProtParam).\n"
-        "- **GRAVY Score** — Hydropathy average; affects solubility and processing (ProtParam).\n"
-        "- **Isoelectric Point** — Net charge pH for formulation stability (ProtParam).\n"
-        "- **Half-Life** — Persistence prediction in biological environments (ProtParam).\n"
-        "- **Instability Index** — Fold-stability predictor (ProtParam).\n"
-        "- **Toxicity** — Safety screen via ToxinPred.\n"
-        "- **IFN-γ Release** — Likelihood of inducing IFN-γ secretion (IFNEpitope)."
+        "**2. Prepare ligands.**\\n"
+        "- Supply a source folder and click *Prepare ligands* to convert to PDBQT.\\n"
+        "- Or switch to *Upload now* to drop ready-made PDBQT files. Prepared ligands live under `prepared_ligands/ligands_no_hydrogens`."
     )
 
+    st.subheader("③ Configure Grid & Backend")
     st.markdown(
-        "**4. Resultant epitopes and FASTA file for antigenicity.**\n"
-        "Upon submission, the app compiles epitope spreadsheets and FASTA files per selected MHC class:\n"
-        "- `aggregated_mhc_I.xlsx` + `all_peptides_anti_mhci.fasta`\n"
-        "- `aggregated_mhc_II.xlsx` + `all_peptides_anti_mhcii.fasta`\n"
-        "Use the FASTA files with VaxiJen to obtain antigenicity values required for ranking."
+        "**1. Select the docking backend.**\\n"
+        "- *Vina (box)*: exhaustiveness-based sampling inside the defined box.\\n"
+        "- *AD4 (maps)*: requires AutoGrid maps and supports component energy breakdown."
     )
     st.markdown(
-        "**VaxiJen workflow reminder:**\n"
-        "1. Visit [VaxiJen](https://www.ddg-pharmfac.net/vaxijen/VaxiJen/VaxiJen.html).\n"
-        "2. Upload the FASTA file (per MHC class) and select `Tumour` as the target organism.\n"
-        "3. Submit, copy the full output into a new TXT file named `vaxijen_values_mhc_(I|II).txt`.\n"
-        "4. Repeat for each class, then proceed to processing."
+        "**2. Set grid box parameters.**\\n"
+        "Enter center (x, y, z), size (Å), and grid spacing. In the Demo tab these are locked to the preset you choose." 
+    )
+    st.markdown(
+        "**3. Force extra atom types (optional).**\\n"
+        "Add comma-separated atom symbols (e.g., `S,NA`) if your ligands contain uncommon types that need maps."
     )
 
-    st.subheader("② Process Aggregated Files")
+    st.subheader("④ Generate AD4 Maps (when using AD4)")
     st.markdown(
-        "Use this tab after gathering both aggregated spreadsheets and VaxiJen TXT outputs."
+        "MetalloDock wraps AutoGrid4 to create or update map files. The workflow validates inputs before launching the executable:\\n"
+        "1. Confirms `autogrid4` exists and has execute permissions.\\n"
+        "2. Merges `AD4_parameters.dat` with optional `AD4Zn.dat`.\\n"
+        "3. Runs `zinc_pseudo.py` (if present) to insert tetrahedral Zn pseudoatoms.\\n"
+        "4. Normalizes receptor oxygen labels to OA.\\n"
+        "5. Detects receptor & ligand atom types and unions them with forced types.\\n"
+        "6. Builds the grid parameter file (GPF) and executes AutoGrid4."
+    )
+    st.warning(
+        "Spacing must be greater than 0 Å. The Demo tab locks spacing at 0.375 Å to mimic published CA binding boxes."
+    )
+
+    st.subheader("⑤ Run Docking")
+    st.markdown(
+        "**1. Click *Run Docking*.**\\n"
+        "MetalloDock queues each ligand, calls the appropriate executable (Vina or AD4), captures stdout/stderr, and displays live status." 
     )
     st.markdown(
-        "**1. Upload antigenicity .txt files.**\n"
-        "Parse each TXT to extract peptide IDs and antigenicity scores via regex."
+        "**2. Understand the results table.**\\n"
+        "For every ligand you'll see binding affinity, pose counts, output/log paths, and status. AD4 runs also surface intermolecular, "
+        "internal, torsional, and estimated free-energy components." 
+    )
+
+    st.subheader("⑥ Review & Export Outputs")
+    st.markdown(
+        "After docking completes you can:"
+        "- Download individual ligand PDBQT and log files."
+        "- Export a CSV summary of all ligands."
+        "- Generate a ZIP archive with all outputs."
     )
     st.markdown(
-        "**2. Upload aggregated .xlsx epitope files.**\n"
-        "Load the `aggregated_mhc_*.xlsx` sheets generated in step ①."
+        "Grid maps reside in `ad4_maps/<prefix>/` and are reused automatically if they already exist."
     )
+
+    st.subheader("Demo Tab Notes")
     st.markdown(
-        "**3. Merge antigenicity with epitope data.**\n"
-        "Join scores onto matching peptides; missing values remain `NaN` but downstream ranking still runs."
+        "The Demo tab is pre-populated for carbonic anhydrase receptors. Download the bundled folders (`Carbonic Anhydrase Receptor Files` and "
+        "`18 PFAS Ligands`) from the repository so the tab can locate receptors and sample ligands. Switching between *Carbonic Anhydrase I* and "
+        "*II* locks grid centers, box sizes, spacing (0.375 Å), and docking parameters accordingly."
     )
-    st.markdown(
-        "**4. Select existing characteristics.**\n"
-        "Tick any additional feature columns already present in your spreadsheets so they're considered during scoring/filtering."
-    )
-    st.markdown(
-        "**5. Choose processing options.**\n"
-        "- *Use machine-learning epitope scoring*: normalizes features and applies logistic regression ranking.\n"
-        "- *Filter epitopes*: keeps only top candidates using half-life, instability, toxicity, and IFN-γ thresholds.\n"
-        "- *Calculate population coverage*: produces regular and optimized coverage sheets."
-    )
-    st.markdown(
-        "**6. Download your final ZIP.**\n"
-        "Contains updated aggregated workbooks and (if selected) population coverage summaries. "
-        "The `potential` column ranges 0–1, reflecting vaccine suitability from the ML model."
-    )
+
     st.info(
-        "Tip: Ensure antigenicity TXT filenames note the MHC class, and check any new feature columns in step 4 so they influence scoring."
+        "Tip: Use the *Tools → Test executables* button to confirm Vina, AutoGrid4, and AutoDock4 paths before starting long jobs."
     )
 
 # ==============================
@@ -1331,6 +1325,22 @@ page_mode = {
 
 state_prefix = "demo" if page == "Demo" else page_mode
 
+# Session state initialisation for docking workflow
+if "docking_task" not in st.session_state:
+    st.session_state.docking_task = None
+if "stop_requested" not in st.session_state:
+    st.session_state.stop_requested = False
+if "docking_results" not in st.session_state:
+    st.session_state.docking_results = None
+if "docking_results_backend" not in st.session_state:
+    st.session_state.docking_results_backend = None
+if "docking_results_ad4" not in st.session_state:
+    st.session_state.docking_results_ad4 = []
+if "docking_results_out_dir" not in st.session_state:
+    st.session_state.docking_results_out_dir = None
+if "docking_status_message" not in st.session_state:
+    st.session_state.docking_status_message = None
+
 st.title(page)
 
 # Working directory chooser
@@ -1373,97 +1383,70 @@ receptor_default_path = str((work_dir / "receptor.pdbqt").resolve())
 st.subheader("Upload Receptor & Ligands")
 upload_col1, upload_col2 = st.columns(2)
 
+ligand_paths: List[Path] = []
+receptor_path: Optional[Path] = None
+
 with upload_col1:
     st.markdown("**Receptor**")
-    receptor_mode_index = 0
-    receptor_input_mode = st.radio(
-        "Provide receptor via:",
-        ["Upload file", "Local path"],
-        index=receptor_mode_index,
-        horizontal=True,
-        key=f"{state_prefix}_receptor_mode"
+    receptor_upload = st.file_uploader(
+        "Upload receptor (PDBQT)",
+        type=["pdbqt"],
+        accept_multiple_files=False,
+        key=f"{state_prefix}_receptor_upload"
     )
-    receptor_uploaded = None
-    receptor_local_path = ""
-    if receptor_input_mode == "Upload file":
-        receptor_uploaded = st.file_uploader(
-            "Upload receptor (PDBQT)",
-            type=["pdbqt"],
-            accept_multiple_files=False,
-            key=f"{state_prefix}_receptor_upload"
-        )
+    receptor_store_dir = work_dir / f"{state_prefix}_receptor"
+    receptor_store_dir.mkdir(parents=True, exist_ok=True)
+
+    if receptor_upload is not None:
+        saved_receptor = _save_uploaded_file(receptor_upload, receptor_store_dir)
+        st.session_state[f"{state_prefix}_receptor_path"] = str(saved_receptor)
+        receptor_path = saved_receptor
+
+    stored_receptor_path = st.session_state.get(f"{state_prefix}_receptor_path")
+    if receptor_path is None and stored_receptor_path:
+        candidate = Path(stored_receptor_path)
+        if candidate.exists():
+            receptor_path = candidate
+
+    if receptor_path:
+        st.caption(f"Using receptor: {receptor_path.name}")
     else:
-        receptor_local_path = st.text_input(
-            "Receptor file path",
-            value=receptor_default_path,
-            key=f"{state_prefix}_receptor_path"
-        ).strip()
+        st.info("Upload a receptor PDBQT to enable docking.")
 
 with upload_col2:
     st.markdown("**Ligands**")
-    lig_src = st.text_input(
-        "Ligand SOURCE folder (to prepare)",
-        value=str((work_dir / "Files_for_GUI" / "Ligands").resolve()),
-        key=f"{state_prefix}_lig_src"
+    ligand_uploads = st.file_uploader(
+        "Upload ligand PDBQT files",
+        type=["pdbqt"],
+        accept_multiple_files=True,
+        key=f"{state_prefix}_ligand_upload"
     )
-    prep_btn = st.button(
-        "Prepare ligands from SOURCE → prepared_ligands",
-        key=f"{state_prefix}_prep_btn"
-    )
-    lig_mode = st.radio(
-        "Docking ligands come from:",
-        ["prepared_ligands folder", "Upload now"],
-        index=0,
-        key=f"{state_prefix}_lig_mode"
-    )
-    ligand_uploads = []
-    if lig_mode == "Upload now":
-        ligand_uploads = st.file_uploader(
-            "Upload ligand PDBQT files",
-            type=["pdbqt"],
-            accept_multiple_files=True,
-            key=f"{state_prefix}_ligand_upload"
-        )
+    ligand_store_dir = work_dir / f"{state_prefix}_ligands"
+    ligand_store_dir.mkdir(parents=True, exist_ok=True)
 
-ligand_paths: List[Path] = []
-prepared_root = work_dir
+    stored_ligand_paths = st.session_state.get(f"{state_prefix}_ligand_paths", [])
+    updated_paths: List[str] = list(stored_ligand_paths)
 
-# Restore any previously stored receptor path for this tab
-stored_receptor_path = st.session_state.get(f"{state_prefix}_receptor_path")
+    if ligand_uploads:
+        for uploaded in ligand_uploads:
+            saved_lig = _save_uploaded_file(uploaded, ligand_store_dir)
+            saved_str = str(saved_lig)
+            if saved_str not in updated_paths:
+                updated_paths.append(saved_str)
+        st.session_state[f"{state_prefix}_ligand_paths"] = updated_paths
 
-if prep_btn:
-    try:
-        prepared = prepare_ligands_from_folder(Path(lig_src).expanduser().resolve(), prepared_root)
-        st.success(f"Prepared {len(prepared)} ligands → {prepared[0].parent}")
-    except Exception as e:
-        st.error(str(e))
+    for path_str in updated_paths:
+        p = Path(path_str)
+        if p.exists():
+            ligand_paths.append(p)
 
-if lig_mode == "Upload now" and ligand_uploads:
-    lig_dir = work_dir / "ligands_uploaded"
-    lig_dir.mkdir(parents=True, exist_ok=True)
-    ligand_paths = []
-    for up in ligand_uploads:
-        ligand_paths.append(_save_uploaded_file(up, lig_dir))
-else:
-    default_prepared_dir = prepared_root / "prepared_ligands" / "ligands_no_hydrogens"
-    ligand_paths = sorted(default_prepared_dir.glob("*.pdbqt"))
-
-receptor_path: Optional[Path] = None
-if receptor_input_mode == "Upload file" and receptor_uploaded is not None:
-    receptor_path = _save_uploaded_file(receptor_uploaded, work_dir / "receptor")
-elif receptor_input_mode == "Upload file" and receptor_uploaded is None and stored_receptor_path:
-    candidate = Path(stored_receptor_path)
-    if candidate.exists():
-        receptor_path = candidate
-elif receptor_input_mode == "Local path" and receptor_local_path:
-    receptor_path = Path(receptor_local_path).expanduser().resolve()
-elif receptor_input_mode == "Local path" and not receptor_local_path and stored_receptor_path:
-    candidate = Path(stored_receptor_path)
-    if candidate.exists():
-        receptor_path = candidate
-
-if receptor_path:
-    st.session_state[f"{state_prefix}_receptor_path"] = str(receptor_path)
+    if ligand_paths:
+        preview = ", ".join(p.name for p in ligand_paths[:5])
+        if len(ligand_paths) > 5:
+            preview += ", …"
+        st.caption(f"{len(ligand_paths)} ligand(s) ready: {preview}")
+    else:
+        st.info("Upload one or more ligand PDBQT files to continue.")
 
 # ---------------------------------------------
 
@@ -1991,193 +1974,322 @@ if build_maps_btn:
 # Run docking
 # ==============================
 
-run_btn = st.button("Run Docking", type="primary")
+run_btn = st.button("Run Docking", type="primary", disabled=bool(st.session_state.docking_task))
+stop_btn = st.button("Stop Docking", disabled=st.session_state.docking_task is None)
 
-rows: List[dict] = []
-ad4_rows: List[dict] = []
+if stop_btn and st.session_state.docking_task:
+    st.session_state.stop_requested = True
+    st.session_state.docking_status_message = ("info", "Stop requested. Docking will halt after the current ligand.")
+    st.experimental_rerun()
 
-if run_btn:
+rows_for_display: Optional[List[dict]] = None
+ad4_rows_for_display: List[dict] = []
+backend_for_display: Optional[str] = None
+out_dir_for_display: Optional[Path] = None
+partial = False
+
+if run_btn and not st.session_state.docking_task:
     if not vina_exe.exists():
         st.error("Vina executable not found.")
-        st.stop()
-    if receptor_path is None or not receptor_path.exists():
+    elif receptor_path is None or not receptor_path.exists():
         st.error("Receptor file missing/invalid.")
-        st.stop()
-    if not ligand_paths:
+    elif not ligand_paths:
         st.error("No ligand files found. Prepare or upload first.")
-        st.stop()
+    else:
+        cx, cy, cz = float(center_x), float(center_y), float(center_z)
+        job_backend = backend
+        maps_prefix_path = None
+        if job_backend == "AD4 (maps)":
+            maps_prefix_path = Path(maps_prefix_input).expanduser().resolve()
+            required_types = sorted(ligand_types_union(ligand_paths) or {"C", "F", "OA", "S", "NA"})
+            have = list_maps_present(maps_prefix_path)
+            base_req = [
+                maps_prefix_path.parent / f"{maps_prefix_path.name}.maps.fld",
+                maps_prefix_path.parent / f"{maps_prefix_path.name}.e.map",
+                maps_prefix_path.parent / f"{maps_prefix_path.name}.d.map",
+            ]
+            missing_files = [p for p in base_req if not p.exists()]
+            missing_types = [t for t in required_types if t not in have]
+            if missing_files or missing_types:
+                if missing_files:
+                    st.error("AD4 fld/e/d maps missing:\n" + "\n".join(str(p) for p in missing_files))
+                if missing_types:
+                    st.error("Affinity maps missing for types:\n" + ", ".join(missing_types))
+            else:
+                job = {
+                    "backend": job_backend,
+                    "ligands": [str(p) for p in ligand_paths],
+                    "index": 0,
+                    "rows": [],
+                    "ad4_rows": [],
+                    "vina_exe": str(vina_exe),
+                    "receptor_path": str(receptor_path),
+                    "center": (cx, cy, cz),
+                    "size": (float(size_x), float(size_y), float(size_z)),
+                    "autodetect": False,
+                    "maps_prefix": str(maps_prefix_path),
+                    "skip_exists": bool(skip_exists),
+                    "base_exhaustiveness": int(base_exhaustiveness),
+                    "base_num_modes": int(base_num_modes),
+                    "timeout_mode": "no_timeout" if timeout_mode.startswith("No timeout") else "soft_timeout",
+                    "timeout_s": int(timeout_s),
+                    "max_retries": int(max_retries),
+                    "exhu_backoff": float(exhu_backoff),
+                    "modes_backoff": float(modes_backoff),
+                    "out_dir": str((work_dir / out_dir_name).resolve()),
+                }
+                st.session_state.docking_task = job
+                st.session_state.stop_requested = False
+                st.session_state.docking_results = None
+                st.session_state.docking_results_backend = None
+                st.session_state.docking_results_ad4 = []
+                st.session_state.docking_results_out_dir = None
+                st.session_state.docking_status_message = None
+                st.experimental_rerun()
+        else:
+            job = {
+                "backend": job_backend,
+                "ligands": [str(p) for p in ligand_paths],
+                "index": 0,
+                "rows": [],
+                "ad4_rows": [],
+                "vina_exe": str(vina_exe),
+                "receptor_path": str(receptor_path),
+                "center": (cx, cy, cz),
+                "size": (float(size_x), float(size_y), float(size_z)),
+                "autodetect": bool(autodetect),
+                "maps_prefix": None,
+                "skip_exists": bool(skip_exists),
+                "base_exhaustiveness": int(base_exhaustiveness),
+                "base_num_modes": int(base_num_modes),
+                "timeout_mode": "no_timeout" if timeout_mode.startswith("No timeout") else "soft_timeout",
+                "timeout_s": int(timeout_s),
+                "max_retries": int(max_retries),
+                "exhu_backoff": float(exhu_backoff),
+                "modes_backoff": float(modes_backoff),
+                "out_dir": str((work_dir / out_dir_name).resolve()),
+            }
+            st.session_state.docking_task = job
+            st.session_state.stop_requested = False
+            st.session_state.docking_results = None
+            st.session_state.docking_results_backend = None
+            st.session_state.docking_results_ad4 = []
+            st.session_state.docking_results_out_dir = None
+            st.session_state.docking_status_message = None
+            st.experimental_rerun()
 
-    cx, cy, cz = float(center_x), float(center_y), float(center_z)
-    if autodetect:
-        auto = autodetect_metal_center(receptor_path)
-        if auto:
-            cx, cy, cz = auto
-            st.info(f"Auto-detected metal center: {cx:.3f}, {cy:.3f}, {cz:.3f}")
+_process_docking_task()
 
-    out_dir = work_dir / out_dir_name
-    prog = st.progress(0, text="Starting docking…")
-    console = st.empty()
+task_state = st.session_state.get("docking_task")
+if task_state:
+    rows_for_display = task_state["rows"]
+    ad4_rows_for_display = task_state["ad4_rows"]
+    backend_for_display = task_state["backend"]
+    out_dir_for_display = Path(task_state["out_dir"])
+    partial = True
+elif st.session_state.docking_results is not None:
+    rows_for_display = st.session_state.docking_results
+    ad4_rows_for_display = st.session_state.docking_results_ad4 or []
+    backend_for_display = st.session_state.docking_results_backend
+    out_dir_val = st.session_state.docking_results_out_dir
+    out_dir_for_display = Path(out_dir_val) if out_dir_val else work_dir
+    partial = False
 
-    def _cb(i, n, name, stat):
-        prog.progress(i / n, text=f"{i}/{n} {name} — {stat}")
-        console.write(f"{i}/{n}  {name}: {stat}")
+status_msg = st.session_state.docking_status_message
+if status_msg:
+    level, msg = status_msg
+    if level == "success":
+        st.success(msg)
+    elif level == "warning":
+        st.warning(msg)
+    else:
+        st.info(msg)
+    st.session_state.docking_status_message = None
 
-    maps_prefix = Path(maps_prefix_input).expanduser().resolve() if backend == "AD4 (maps)" else None
+if rows_for_display is not None and backend_for_display:
+    _display_results_table(rows_for_display, backend_for_display, out_dir_for_display, ad4_rows_for_display, partial=partial)
+else:
+    st.info("Run docking to see results.")
+
+def _display_results_table(rows: List[dict], backend: str, out_dir: Path, ad4_rows: List[dict], partial: bool = False) -> None:
+    if not rows:
+        if partial:
+            st.info("No ligands processed yet.")
+        return
+
+    if partial:
+        st.info(f"Processed {len(rows)} ligand(s) so far.")
+
+    df = pd.DataFrame(rows)
+    drop_cols = [c for c in df.columns if c.startswith("AD4_")]
+    display_df = df[[c for c in df.columns if c not in drop_cols]]
+    st.dataframe(display_df, use_container_width=True)
+
+    st.subheader("Result Files")
+    for idx, row in enumerate(rows):
+        ligand_name = row.get("Ligand", f"Ligand {idx+1}")
+        out_path = row.get("Output_File")
+        log_path = row.get("Log_File")
+
+        if out_path and Path(out_path).exists():
+            archive = io.BytesIO()
+            with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.write(out_path, arcname=Path(out_path).name)
+                if log_path and Path(log_path).exists():
+                    zf.write(log_path, arcname=Path(log_path).name)
+            archive.seek(0)
+            st.download_button(
+                label=f"Download {ligand_name} results (ZIP)",
+                data=archive.getvalue(),
+                file_name=f"{Path(out_path).stem}.zip",
+                key=f"dl_zip_{idx}"
+            )
+        else:
+            st.caption(f"No PDBQT/log available for {ligand_name}")
 
     if backend == "AD4 (maps)":
-        required_types = sorted(ligand_types_union(ligand_paths) or {"C","F","OA","S","NA"})
-        have = list_maps_present(maps_prefix)
-        base_req = [
-            maps_prefix.parent / f"{maps_prefix.name}.maps.fld",
-            maps_prefix.parent / f"{maps_prefix.name}.e.map",
-            maps_prefix.parent / f"{maps_prefix.name}.d.map",
-        ]
-        missing_files = [p for p in base_req if not p.exists()]
-        missing_types = [t for t in required_types if t not in have]
-        if missing_files or missing_types:
-            if missing_files:
-                st.error("AD4 fld/e/d maps missing:\n" + "\n".join(str(p) for p in missing_files))
-            if missing_types:
-                st.error("Affinity maps missing for types:\n" + ", ".join(missing_types))
-            st.stop()
-
-    tm_mode_key = "no_timeout" if timeout_mode.startswith("No timeout") else "soft_timeout"
-
-    with st.spinner("Running docking…"):
-        if backend == "AD4 (maps)":
-            rows = run_vina_batch(
-                vina_exe=vina_exe,
-                receptor_file=receptor_path,
-                ligand_files=ligand_paths,
-                out_dir=out_dir,
-                center=(cx, cy, cz),
-                size=(float(size_x), float(size_y), float(size_z)),
-                scoring="ad4",
-                base_exhaustiveness=int(base_exhaustiveness),
-                base_num_modes=int(base_num_modes),
-                timeout_mode=tm_mode_key,
-                timeout_s=int(timeout_s),
-                max_retries=int(max_retries),
-                exhu_backoff=float(exhu_backoff),
-                modes_backoff=float(modes_backoff),
-                progress_cb=_cb,
-                maps_prefix=maps_prefix,
-                skip_if_output_exists=bool(skip_exists),
-            )
-            ad4_rows = rows
-        else:
-            rows = run_vina_batch(
-                vina_exe=vina_exe,
-                receptor_file=receptor_path,
-                ligand_files=ligand_paths,
-                out_dir=out_dir,
-                center=(cx, cy, cz),
-                size=(float(size_x), float(size_y), float(size_z)),
-                scoring="vina",
-                base_exhaustiveness=int(base_exhaustiveness),
-                base_num_modes=int(base_num_modes),
-                timeout_mode=tm_mode_key,
-                timeout_s=int(timeout_s),
-                max_retries=int(max_retries),
-                exhu_backoff=float(exhu_backoff),
-                modes_backoff=float(modes_backoff),
-                progress_cb=_cb,
-                maps_prefix=None,
-                skip_if_output_exists=bool(skip_exists),
-            )
-            ad4_rows = []
-
-    if rows:
-        df = pd.DataFrame(rows)
-        st.success("Docking complete.")
-        drop_cols = [c for c in df.columns if c.startswith("AD4_")]
-        display_df = df[[c for c in df.columns if c not in drop_cols]]
-        st.dataframe(display_df, use_container_width=True)
-
-        st.subheader("Result Files")
-        for idx, row in enumerate(rows):
-            ligand_name = row.get("Ligand", "Ligand")
-            out_path = row.get("Output_File")
-            log_path = row.get("Log_File")
-            cols = st.columns(2)
-            with cols[0]:
-                if out_path and Path(out_path).exists():
-                    with open(out_path, "rb") as f:
-                        st.download_button(
-                            label=f"Download {ligand_name} PDBQT",
-                            data=f.read(),
-                            file_name=Path(out_path).name,
-                            key=f"dl_pdbqt_{idx}"
-                        )
-                else:
-                    st.caption(f"No PDBQT for {ligand_name}")
-            with cols[1]:
-                if log_path and Path(log_path).exists():
-                    with open(log_path, "rb") as f:
-                        st.download_button(
-                            label=f"Download {ligand_name} log",
-                            data=f.read(),
-                            file_name=Path(log_path).name,
-                            key=f"dl_log_{idx}"
-                        )
-                else:
-                    st.caption(f"No log for {ligand_name}")
-
-        # Quick stats
-        if backend == "AD4 (maps)":
-            st.subheader("AD4 Summary")
-            ad4_success = [r for r in ad4_rows if r.get('Status') == 'Success']
-            st.write(f"AD4 successes: {len(ad4_success)}/{len(ad4_rows)} ligands")
-            if ad4_success:
-                comp_df = pd.DataFrame(ad4_success)
-                display_cols = [
-                    'Ligand',
-                    'AD4_Affinity', 'AD4_Intermolecular', 'AD4_Internal', 'AD4_Torsional',
-                    'Binding_Affinity', 'Num_Poses'
-                ]
-                available_cols = [c for c in display_cols if c in comp_df.columns]
-                if available_cols:
-                    st.write("Energy Components:")
-                    st.dataframe(comp_df[available_cols], use_container_width=True)
-                try:
-                    ad4_affs = [float(r['AD4_Affinity']) for r in ad4_success if r.get('AD4_Affinity') not in ('N/A', None, '')]
-                    if ad4_affs:
-                        st.write(f"AD4 binding affinities: {min(ad4_affs):.2f} to {max(ad4_affs):.2f} kcal/mol")
-                    interm = [float(r['AD4_Intermolecular']) for r in ad4_success if r.get('AD4_Intermolecular') not in ('N/A', None, '')]
-                    if interm:
-                        avg_inter = sum(interm) / len(interm)
-                        st.write(f"Average intermolecular energy: {avg_inter:.2f} kcal/mol")
-                except Exception:
-                    pass
-        else:
-            st.subheader("Vina Summary")
+        st.subheader("AD4 Summary")
+        ad4_success = [r for r in ad4_rows if r.get("Status") == "Success"]
+        st.write(f"AD4 successes: {len(ad4_success)}/{len(ad4_rows) or len(rows)} ligands")
+        if ad4_success:
+            comp_df = pd.DataFrame(ad4_success)
+            display_cols = [
+                "Ligand",
+                "AD4_Affinity", "AD4_Intermolecular", "AD4_Internal", "AD4_Torsional",
+                "Binding_Affinity", "Num_Poses"
+            ]
+            available_cols = [c for c in display_cols if c in comp_df.columns]
+            if available_cols:
+                st.write("Energy Components:")
+                st.dataframe(comp_df[available_cols], use_container_width=True)
             try:
-                vina_affs = [float(r["Binding_Affinity"]) for r in rows if r.get("Binding_Affinity") not in ("", "N/A")]
-                if vina_affs:
-                    st.write(f"Binding affinities range: {min(vina_affs):.1f} to {max(vina_affs):.1f} kcal/mol")
-                    st.write(f"Average binding affinity: {sum(vina_affs)/len(vina_affs):.1f} kcal/mol")
+                ad4_affs = [float(r["AD4_Affinity"]) for r in ad4_success if r.get("AD4_Affinity") not in ("N/A", None, "")]
+                if ad4_affs:
+                    st.write(f"AD4 binding affinities: {min(ad4_affs):.2f} to {max(ad4_affs):.2f} kcal/mol")
+                interm = [float(r["AD4_Intermolecular"]) for r in ad4_success if r.get("AD4_Intermolecular") not in ("N/A", None, "")]
+                if interm:
+                    avg_inter = sum(interm) / len(interm)
+                    st.write(f"Average intermolecular energy: {avg_inter:.2f} kcal/mol")
             except Exception:
                 pass
-
-            st.download_button(
-                "Download results CSV",
-                data=_cached_file_bytes(results_to_csv_bytes(rows)),
-                file_name="pfas_docking_results.csv",
-                mime="text/csv",
-            )
-            if out_dir.exists():
-                st.download_button(
-                    "Download all output PDBQTs (ZIP)",
-                    data=_cached_file_bytes(zip_outputs(out_dir)),
-                    file_name=f"{out_dir.name}.zip",
-                    mime="application/zip",
-                )
     else:
-        st.info("Run docking to see results.")
+        st.subheader("Vina Summary")
+        try:
+            vina_affs = [float(r["Binding_Affinity"]) for r in rows if r.get("Binding_Affinity") not in ("", "N/A", None)]
+            if vina_affs:
+                st.write(f"Binding affinities range: {min(vina_affs):.1f} to {max(vina_affs):.1f} kcal/mol")
+                st.write(f"Average binding affinity: {sum(vina_affs)/len(vina_affs):.1f} kcal/mol")
+        except Exception:
+            pass
 
-st.caption(
-    """Tips:
-• If you see "Affinity map for atom type X is not present", click **Build/Update AD4 maps** with X in Force-include.
-• The app now scans **all ligands** to decide which maps to make, and prints per-ligand **Score** or **missing map** in the console.
-• Use **No timeout** for tough ligands; or enable soft timeouts with retries/backoff."""
-)
+        csv_bytes = _cached_file_bytes(results_to_csv_bytes(rows))
+        st.download_button(
+            "Download results CSV",
+            data=csv_bytes,
+            file_name="metallodock_results.csv",
+            mime="text/csv",
+        )
+        if out_dir.exists():
+            all_zip = _cached_file_bytes(zip_outputs(out_dir))
+            st.download_button(
+                "Download all output PDBQTs (ZIP)",
+                data=all_zip,
+                file_name=f"{out_dir.name}.zip",
+                mime="application/zip",
+            )
+
+
+def _process_docking_task():
+    task = st.session_state.get("docking_task")
+    if not task:
+        return
+
+    ligands = [Path(p) for p in task["ligands"]]
+    total = len(ligands)
+    idx = task["index"]
+    backend = task["backend"]
+
+    if total == 0:
+        st.info("No ligands to process.")
+        st.session_state["docking_results"] = []
+        st.session_state["docking_results_backend"] = backend
+        st.session_state["docking_results_ad4"] = []
+        st.session_state["docking_results_out_dir"] = task["out_dir"]
+        st.session_state["docking_task"] = None
+        return
+
+    if st.session_state.get("stop_requested"):
+        st.warning("Docking stopped by user.")
+        st.session_state["docking_results"] = task["rows"]
+        st.session_state["docking_results_backend"] = backend
+        st.session_state["docking_results_ad4"] = task["ad4_rows"]
+        st.session_state["docking_results_out_dir"] = task["out_dir"]
+        st.session_state["docking_status_message"] = ("warning", "Docking stopped. Results below include completed ligands.")
+        st.session_state["docking_task"] = None
+        st.session_state["stop_requested"] = False
+        return
+
+    progress = st.progress(idx / total if total else 0)
+
+    if idx >= total:
+        st.session_state["docking_results"] = task["rows"]
+        st.session_state["docking_results_backend"] = backend
+        st.session_state["docking_results_ad4"] = task["ad4_rows"]
+        st.session_state["docking_results_out_dir"] = task["out_dir"]
+        st.session_state["docking_status_message"] = ("success", "Docking complete.")
+        st.session_state["docking_task"] = None
+        st.experimental_rerun()
+        return
+
+    ligand_path = ligands[idx]
+    st.info(f"Docking ligand {idx + 1}/{total}: {ligand_path.name}")
+
+    receptor_path = Path(task["receptor_path"])
+    cx, cy, cz = task["center"]
+    if task.get("autodetect"):
+        auto_center = autodetect_metal_center(receptor_path)
+        if auto_center:
+            cx, cy, cz = auto_center
+            st.info(f"Auto-detected metal center: {cx:.3f}, {cy:.3f}, {cz:.3f}")
+
+    maps_prefix = Path(task["maps_prefix"]) if task.get("maps_prefix") else None
+    out_dir = Path(task["out_dir"])
+
+    rows = run_vina_batch(
+        vina_exe=Path(task["vina_exe"]),
+        receptor_file=receptor_path,
+        ligand_files=[ligand_path],
+        out_dir=out_dir,
+        center=(cx, cy, cz),
+        size=task["size"],
+        scoring="ad4" if backend == "AD4 (maps)" else "vina",
+        base_exhaustiveness=task["base_exhaustiveness"],
+        base_num_modes=task["base_num_modes"],
+        timeout_mode=task["timeout_mode"],
+        timeout_s=task["timeout_s"],
+        max_retries=task["max_retries"],
+        exhu_backoff=task["exhu_backoff"],
+        modes_backoff=task["modes_backoff"],
+        progress_cb=None,
+        maps_prefix=maps_prefix,
+        skip_if_output_exists=task["skip_exists"],
+    )
+
+    if rows:
+        task["rows"].extend(rows)
+        if backend == "AD4 (maps)":
+            task["ad4_rows"].extend(rows)
+
+    task["index"] += 1
+    progress.progress(task["index"] / total)
+    st.session_state["docking_task"] = task
+
+    if task["index"] >= total:
+        st.session_state["docking_results"] = task["rows"]
+        st.session_state["docking_results_backend"] = backend
+        st.session_state["docking_results_ad4"] = task["ad4_rows"]
+        st.session_state["docking_results_out_dir"] = task["out_dir"]
+        st.session_state["docking_status_message"] = ("success", "Docking complete.")
+        st.session_state["docking_task"] = None
+
+    st.experimental_rerun()
