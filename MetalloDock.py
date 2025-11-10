@@ -1347,6 +1347,9 @@ with upload_col2:
 ligand_paths: List[Path] = []
 prepared_root = work_dir
 
+# Restore any previously stored receptor path for this tab
+stored_receptor_path = st.session_state.get(f"{page_mode}_receptor_path")
+
 if prep_btn:
     try:
         prepared = prepare_ligands_from_folder(Path(lig_src).expanduser().resolve(), prepared_root)
@@ -1367,10 +1370,19 @@ else:
 receptor_path: Optional[Path] = None
 if receptor_input_mode == "Upload file" and receptor_uploaded is not None:
     receptor_path = _save_uploaded_file(receptor_uploaded, work_dir / "receptor")
+elif receptor_input_mode == "Upload file" and receptor_uploaded is None and stored_receptor_path:
+    candidate = Path(stored_receptor_path)
+    if candidate.exists():
+        receptor_path = candidate
 elif receptor_input_mode == "Local path" and receptor_local_path:
     receptor_path = Path(receptor_local_path).expanduser().resolve()
-elif demo_mode:
-    receptor_path = Path(receptor_default_path).expanduser()
+elif receptor_input_mode == "Local path" and not receptor_local_path and stored_receptor_path:
+    candidate = Path(stored_receptor_path)
+    if candidate.exists():
+        receptor_path = candidate
+
+if receptor_path:
+    st.session_state[f"{page_mode}_receptor_path"] = str(receptor_path)
 
 # ---------------------------------------------
 
