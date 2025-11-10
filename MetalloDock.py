@@ -1919,3 +1919,9 @@ if rows:
         )
 else:
     st.info("Run docking to see results.")
+
+def _process_docking_task() -> None:
+    """Legacy no-op to maintain compatibility with older session state."""
+    st.session_state.docking_task = None
+    st.session_state.stop_requested = False
+    return
