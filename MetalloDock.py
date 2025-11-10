@@ -15,20 +15,35 @@ from pathlib import Path
 from typing import List, Tuple, Optional, Set, Dict
 
 REPO_ROOT = Path(__file__).resolve().parent
-DEMO_RECEPTOR_DIR = REPO_ROOT / "Carbonic Anhydrase Receptor Files"
+
+# Demo asset discovery
+DEMO_RECEPTOR_DIR_CANDIDATES = [
+    REPO_ROOT / "Carbonic Anhydrase Receptor Files",
+    REPO_ROOT / "MetalloDock Receptors and Ligands",
+]
+DEMO_LIGAND_DIR_CANDIDATES = [
+    REPO_ROOT / "18 PFAS Ligands",
+    REPO_ROOT / "MetalloDock Receptors and Ligands" / "18 PFAS",
+]
+
+_DEMO_RECEPTOR_DIR = next((p for p in DEMO_RECEPTOR_DIR_CANDIDATES if p.exists()), DEMO_RECEPTOR_DIR_CANDIDATES[0])
+_DEMO_LIGAND_DIR = next((p for p in DEMO_LIGAND_DIR_CANDIDATES if p.exists()), DEMO_LIGAND_DIR_CANDIDATES[0])
+DEMO_RECEPTOR_DIR_FOUND = _DEMO_RECEPTOR_DIR.exists()
+DEMO_LIGAND_DIR_FOUND = _DEMO_LIGAND_DIR.exists()
+
 DEMO_RECEPTOR_SETTINGS = {
     "Carbonic Anhydrase I (7Q0D)": {
-        "path": DEMO_RECEPTOR_DIR / "Carbonic_Anhydrase_I.pdbqt",
+        "path": _DEMO_RECEPTOR_DIR / "Carbonic_Anhydrase_I.pdbqt",
         "center": (29.951, 0.420, -4.735),
         "size": (16.0, 18.0, 16.0),
     },
     "Carbonic Anhydrase II (2VVB)": {
-        "path": DEMO_RECEPTOR_DIR / "Carbonic_Anhydrase_II.pdbqt",
+        "path": _DEMO_RECEPTOR_DIR / "Carbonic_Anhydrase_II.pdbqt",
         "center": (-6.421, 0.342, 17.256),
         "size": (20.0, 20.0, 20.0),
     },
 }
-DEMO_LIGAND_SOURCE_DIR = REPO_ROOT / "18 PFAS Ligands"
+DEMO_LIGAND_SOURCE_DIR = _DEMO_LIGAND_DIR
 
 import streamlit as st
 import pandas as pd
@@ -1273,8 +1288,18 @@ st.caption(f"Using working directory: `{work_dir}`")
 # Receptor and Ligand Setup
 if page_mode == "demo":
     st.subheader("Select Receptor & Ligands")
-    if not DEMO_RECEPTOR_SETTINGS["Carbonic Anhydrase I (7Q0D)"]["path"].exists() or not DEMO_LIGAND_SOURCE_DIR.exists():
-        st.error("Demo assets folder missing. Ensure `Carbonic Anhydrase Receptor Files/` and `18 PFAS Ligands/` are included in the repo.")
+    missing_messages = []
+    if not DEMO_RECEPTOR_DIR_FOUND:
+        missing_messages.append(
+            "receptors in one of: " + ", ".join(str(p) for p in DEMO_RECEPTOR_DIR_CANDIDATES)
+        )
+    if not DEMO_LIGAND_DIR_FOUND:
+        missing_messages.append(
+            "ligands in one of: " + ", ".join(str(p) for p in DEMO_LIGAND_DIR_CANDIDATES)
+        )
+    if missing_messages:
+        st.error("Demo assets folder missing. Expected " + "; ".join(missing_messages) + ".")
+
     receptor_choice = st.selectbox(
         "Select receptor",
         list(DEMO_RECEPTOR_SETTINGS.keys()),
@@ -1288,20 +1313,26 @@ if page_mode == "demo":
 
     demo_upload = st.file_uploader("Optional: upload a receptor (PDBQT)", type=["pdbqt"], key="demo_receptor_upload")
     if st.button("Use bundled receptor", key="demo_prepare_receptor"):
-        shutil.copy2(receptor_info["path"], demo_receptor_dst)
-        st.success(f"Copied demo receptor to {demo_receptor_dst}")
+        if receptor_info["path"].exists():
+            shutil.copy2(receptor_info["path"], demo_receptor_dst)
+            st.success(f"Copied demo receptor to {demo_receptor_dst}")
+        else:
+            st.error(f"Bundled receptor not found at {receptor_info['path']}.")
 
     if demo_upload is not None:
         demo_receptor_dst.write(demo_upload.getbuffer())
         st.info(f"Using uploaded receptor: {demo_receptor_dst}")
-    elif not demo_receptor_dst.exists() and receptor_info["path"].exists():
-        shutil.copy2(receptor_info["path"], demo_receptor_dst)
+    elif receptor_info["path"].exists() and not demo_receptor_dst.exists():
+        try:
+            shutil.copy2(receptor_info["path"], demo_receptor_dst)
+        except Exception as exc:
+            st.error(f"Could not copy demo receptor: {exc}")
     receptor_path = demo_receptor_dst if demo_receptor_dst.exists() else receptor_info["path"]
 
-    ligand_files = sorted(DEMO_LIGAND_SOURCE_DIR.glob("*.pdbqt"))
+    ligand_files = sorted(DEMO_LIGAND_SOURCE_DIR.glob("*.pdbqt")) if DEMO_LIGAND_SOURCE_DIR.exists() else []
     ligand_labels = [p.name for p in ligand_files]
     if not ligand_labels:
-        st.error("No ligands found in `18 PFAS Ligands/`. Add the sample PFAS ligands to run the demo.")
+        st.error("No ligands found in the demo ligands folder. Add the sample PFAS ligands to run the demo.")
         ligand_paths = []
     else:
         st.markdown("**Select ligand(s)**")
@@ -1324,11 +1355,27 @@ if page_mode == "demo":
             if name in ligand_lookup:
                 src = ligand_lookup[name]
                 dst = demo_ligand_dir / src.name
-                if not dst.exists():
-                    shutil.copy2(src, dst)
-                ligand_paths.append(dst)
+                if src.exists():
+                    if not dst.exists():
+                        shutil.copy2(src, dst)
+                    ligand_paths.append(dst)
+                else:
+                    st.error(f"Ligand file missing: {src}")
         if not ligand_paths:
             st.warning("Select at least one ligand to enable docking.")
+        else:
+            missing = [p for p in ligand_paths if not p.exists()]
+            if missing:
+                for missing_path in missing:
+                    src = DEMO_LIGAND_SOURCE_DIR / missing_path.name
+                    if src.exists():
+                        shutil.copy2(src, missing_path)
+                if missing:
+                    st.warning("One or more demo ligands were missing locally and have been restored.")
+        if receptor_path.exists() is False:
+            st.error(
+                "Selected receptor is missing. Upload a receptor file or ensure the bundled receptor exists."
+            )
 else:
     st.subheader("Upload Receptor & Ligands")
     upload_col1, upload_col2 = st.columns(2)
