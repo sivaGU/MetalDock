@@ -1321,7 +1321,7 @@ THEME_CSS = f"""
 /* Primary buttons (Run Docking, etc.) */
 .stButton > button, .stDownloadButton > button {{
     background: {MEDIUM_STEEL_BLUE};
-    color: {WHITE};
+    color: {WHITE} !important;
     border: none;
     border-radius: 999px;
     padding: 0.4rem 1.1rem;
@@ -1331,8 +1331,33 @@ THEME_CSS = f"""
 
 .stButton > button:hover, .stDownloadButton > button:hover {{
     background: {DEEP_CERULEAN};
+    color: {WHITE} !important;
     transform: translateY(-1px);
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+}}
+
+/* Ensure all button types (primary, secondary) have white text on blue backgrounds */
+.stButton > button[data-baseweb="button"],
+.stButton > button.kind-primary,
+.stButton > button.kind-secondary,
+button[data-baseweb="button"] {{
+    color: {WHITE} !important;
+}}
+
+/* Sidebar buttons specifically - ensure white text */
+[data-testid="stSidebar"] .stButton > button {{
+    background: {MEDIUM_STEEL_BLUE};
+    color: {WHITE} !important;
+}}
+
+[data-testid="stSidebar"] .stButton > button:hover {{
+    background: {DEEP_CERULEAN};
+    color: {WHITE} !important;
+}}
+
+/* Ensure all Streamlit buttons have white text when they have blue backgrounds */
+.stButton button {{
+    color: {WHITE} !important;
 }}
 
 /* Radio + checkbox accent color */
