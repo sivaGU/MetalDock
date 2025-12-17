@@ -1569,18 +1569,18 @@ st.markdown(THEME_CSS, unsafe_allow_html=True)
 if "nav_open" not in st.session_state:
     st.session_state.nav_open = True
 if "current_page" not in st.session_state:
-    st.session_state.current_page = "Demo"
+    st.session_state.current_page = "MetalloDock Demo"
 
 nav_pages = [
     "Home",
     "Documentation",
-    "Demo",
+    "MetalloDock Demo",
     "Standard AutoDock",
     "Metalloprotein Docking",
 ]
 
 if st.session_state.current_page not in nav_pages:
-    st.session_state.current_page = "Demo"
+    st.session_state.current_page = "MetalloDock Demo"
 
 with st.sidebar:
     toggle_label = "«" if st.session_state.nav_open else "»"
@@ -1610,12 +1610,12 @@ if page == "Documentation":
     st.stop()
 
 page_mode = {
-    "Demo": "ad4",
+    "MetalloDock Demo": "ad4",
     "Standard AutoDock": "vina",
     "Metalloprotein Docking": "ad4",
 }.get(page, "generic")
 
-state_prefix = "demo" if page == "Demo" else page_mode
+state_prefix = "demo" if page == "MetalloDock Demo" else page_mode
 
 # Session state initialisation for docking workflow
 if "docking_task" not in st.session_state:
@@ -1651,7 +1651,7 @@ _demo_default_size: Optional[Tuple[float, float, float]] = None
 _demo_default_spacing: Optional[float] = None
 demo_selected_label: Optional[str] = None
 
-if page == "Demo":
+if page == "MetalloDock Demo":
     st.subheader("Choose Demo Receptor Preset")
     preset_cols = st.columns(len(DEMO_PRESETS))
     for idx, (label, settings) in enumerate(DEMO_PRESETS.items()):
@@ -1751,7 +1751,7 @@ if page_mode == "vina":
         "spacing": 0.0,
     }
     maps_prefix_default = str((work_dir / "ad4_maps" / "receptor_maps").resolve())
-elif page == "Demo":
+elif page == "MetalloDock Demo":
     allowed_backends = ["AD4 (maps)"]
     default_backend_label = "AD4 (maps)"
     grid_defaults = {
@@ -1825,7 +1825,7 @@ with st.expander("Configuration", expanded=True):
         default_size = grid_defaults["size"]
         default_spacing = grid_defaults["spacing"]
 
-        if page == "Demo":
+        if page == "MetalloDock Demo":
             for idx, axis in enumerate(["x", "y", "z"]):
                 center_key = center_keys[axis]
                 size_key = size_keys[axis]
@@ -1846,7 +1846,7 @@ with st.expander("Configuration", expanded=True):
             if f"{state_prefix}_maps_prefix" not in st.session_state:
                 st.session_state[f"{state_prefix}_maps_prefix"] = maps_prefix_default
 
-        grid_disabled = page == "Demo"
+        grid_disabled = page == "MetalloDock Demo"
 
         grid_c1, grid_c2, grid_c3 = st.columns(3)
         with grid_c1:
@@ -1946,7 +1946,7 @@ is_windows = platform.system() == "Windows"
 
 st.subheader("Docking Parameters")
 p1, p2, p3, p4 = st.columns(4)
-params_disabled = page == "Demo"
+params_disabled = page == "MetalloDock Demo"
 with p1:
     scoring = "ad4" if backend == "AD4 (maps)" else "vina"
     st.markdown(f"**Scoring function:** `{scoring}`")
