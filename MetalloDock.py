@@ -1748,7 +1748,7 @@ if page_mode == "vina":
     grid_defaults = {
         "center": (0.0, 0.0, 0.0),
         "size": (0.0, 0.0, 0.0),
-        "spacing": 0.0,
+        "spacing": 0.375,
     }
     maps_prefix_default = str((work_dir / "ad4_maps" / "receptor_maps").resolve())
 elif page == "MetalloDock Demo":
@@ -1767,7 +1767,7 @@ elif page_mode == "ad4":
     grid_defaults = {
         "center": (0.0, 0.0, 0.0),
         "size": (0.0, 0.0, 0.0),
-        "spacing": 0.0,
+        "spacing": 0.375,
     }
     maps_prefix_default = str((work_dir / "ad4_maps" / "receptor_maps").resolve())
 else:
