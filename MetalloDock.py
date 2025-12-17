@@ -1321,7 +1321,7 @@ THEME_CSS = f"""
 
 /* Sidebar: solid color (no gradient) */
 [data-testid="stSidebar"] {{
-    background: {MEDIUM_STEEL_BLUE};
+    background: {MIDNIGHT_AZURE};
     color: {WHITE};
 }}
 
@@ -1375,23 +1375,45 @@ button[data-baseweb="button"] div {{
     color: {WHITE} !important;
 }}
 
-/* Sidebar buttons specifically - ensure white text */
+/* Sidebar navigation buttons - distinct styling for better visibility */
 [data-testid="stSidebar"] .stButton > button {{
-    background: {MEDIUM_STEEL_BLUE} !important;
+    background: {LIGHT_AZURE} !important;
     color: {WHITE} !important;
+    border: 2px solid {SOFT_SKY_BLUE} !important;
+    border-radius: 8px !important;
+    padding: 0.75rem 1rem !important;
+    font-weight: 700 !important;
+    font-size: 1rem !important;
+    margin-bottom: 0.5rem !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+    transition: all 0.2s ease !important;
 }}
 
 [data-testid="stSidebar"] .stButton > button * {{
     color: {WHITE} !important;
+    font-weight: 700 !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3) !important;
+}}
+
+/* Selected/active sidebar button - darker and more prominent */
+[data-testid="stSidebar"] .stButton > button.kind-primary,
+[data-testid="stSidebar"] .stButton > button[aria-pressed="true"] {{
+    background: {MEDIUM_STEEL_BLUE} !important;
+    border: 2px solid {DEEP_CERULEAN} !important;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
 }}
 
 [data-testid="stSidebar"] .stButton > button:hover {{
-    background: {DEEP_CERULEAN} !important;
+    background: {SOFT_SKY_BLUE} !important;
+    border-color: {LIGHT_AZURE} !important;
     color: {WHITE} !important;
+    transform: translateX(4px) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
 }}
 
 [data-testid="stSidebar"] .stButton > button:hover * {{
     color: {WHITE} !important;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
 }}
 
 /* Final catch-all for any button with blue background - target by background color */
@@ -2484,12 +2506,4 @@ def build_ad4_maps(
 def build_ad4_maps_for_selection(*args, **kwargs):
     """Backward-compatible wrapper for legacy code paths."""
     return build_ad4_maps(*args, **kwargs)
-
-
-
-
-
-
-
-
 
