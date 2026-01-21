@@ -103,6 +103,162 @@ def render_home_page():
         "Use it to script batch runs after maps are prepared."
     )
 
+def render_gnina_documentation_page():
+    st.header("GNINA ML Docking — Documentation")
+    st.write(
+        "Welcome to the GNINA ML Docking documentation! This guide covers everything you need to know about "
+        "using GNINA (or SMINA) for molecular docking with machine learning-enhanced scoring."
+    )
+
+    st.subheader("What is GNINA?")
+    st.markdown(
+        "**GNINA** is a molecular docking program with integrated support for scoring and optimizing ligands "
+        "using convolutional neural networks (CNNs). It is a fork of SMINA, which itself is a fork of AutoDock Vina. "
+        "GNINA provides:\n\n"
+        "• **Empirical scoring** (like Vina/SMINA) for fast docking\n"
+        "• **CNN scoring** for improved binding affinity predictions\n"
+        "• **CNN refinement** to optimize docked poses\n"
+        "• **Flexible input formats** (PDB, PDBQT, MOL2, SDF)\n"
+        "• **Zinc-aware docking** support for metalloproteins"
+    )
+
+    st.subheader("① File Preparation")
+    st.markdown(
+        "**Receptors:**\n"
+        "• **Format**: PDB or PDBQT files\n"
+        "• **Provided CA Receptors**: You can use the pre-configured Carbonic Anhydrase receptors:\n"
+        "  - `(DEMO) Carbonic Anhydrase Receptors/Carbonic_Anhydrase_I.pdbqt`\n"
+        "  - `(DEMO) Carbonic Anhydrase Receptors/Carbonic_Anhydrase_II.pdbqt`\n"
+        "• **Your Own Receptors**: Upload any PDB or PDBQT receptor file\n\n"
+        "**Ligands:**\n"
+        "• **Formats**: MOL2, SDF, PDBQT, or PDB files\n"
+        "• **Provided Ligands**: You can use the 18 PFAS ligands from `(DEMO) Ligands/` folder\n"
+        "• **Your Own Ligands**: Upload any ligand files in supported formats\n"
+        "• **Batch Processing**: Upload multiple ligands at once for batch docking"
+    )
+
+    st.subheader("② Grid Box Configuration")
+    st.markdown(
+        "**Grid Box Center (x, y, z)**:\n"
+        "• The center coordinates of the search space in Angstroms\n"
+        "• For CA receptors, typical centers are around the zinc binding site\n"
+        "• You can manually enter coordinates or use the metal center detection\n\n"
+        "**Grid Box Size**:\n"
+        "• The dimensions of the search space (width, height, depth) in Angstroms\n"
+        "• Default: 20.0 × 20.0 × 20.0 Å\n"
+        "• Larger boxes = more search space but slower docking\n\n"
+        "**Grid Spacing**:\n"
+        "• The resolution of the grid in Angstroms\n"
+        "• Default: 0.375 Å (same as AutoDock Vina)\n"
+        "• Smaller spacing = higher resolution but slower computation"
+    )
+
+    st.subheader("③ Docking Parameters")
+    st.markdown(
+        "**Exhaustiveness**:\n"
+        "• Controls how thoroughly GNINA searches the conformational space\n"
+        "• Range: 1-100 (default: 8)\n"
+        "• Higher values = better sampling but slower (recommended: 8-32)\n\n"
+        "**Number of Modes**:\n"
+        "• Number of binding poses to generate\n"
+        "• Default: 9 poses\n"
+        "• More poses = more diverse binding conformations\n\n"
+        "**CNN Scoring Mode**:\n"
+        "• **none**: Use only empirical scoring (fastest, SMINA-compatible)\n"
+        "• **rescore**: Dock with empirical scoring, then rescore with CNN\n"
+        "• **refinement**: Dock with empirical scoring, then refine poses with CNN\n"
+        "• **all**: Use CNN for both rescoring and refinement (slowest, most accurate)\n\n"
+        "**Note**: CNN scoring requires model files (`gnina_models/*.pt`). If not available, only empirical scoring will be used."
+    )
+
+    st.subheader("④ Backend Configuration")
+    st.markdown(
+        "**Local Execution**:\n"
+        "• GNINA/SMINA executable must be in `Files_for_GUI/` or in your system PATH\n"
+        "• On Streamlit Cloud, place the Linux binary in `Files_for_GUI/gnina` or `Files_for_GUI/smina`\n"
+        "• Make sure the executable has execute permissions (`chmod +x`)\n\n"
+        "**Backend API (for Streamlit Cloud)**:\n"
+        "• If GNINA/SMINA is not available locally, you can use a backend API\n"
+        "• Enter the backend URL in the Configuration section\n"
+        "• Default: `https://gnina-backend.railway.app`\n"
+        "• The backend handles GNINA execution and returns results\n\n"
+        "**Model Files**:\n"
+        "• CNN model files (`.pt`) should be in `Files_for_GUI/gnina_models/`\n"
+        "• 64 model files are already included in the repository\n"
+        "• These are only needed for CNN scoring modes (rescore, refinement, all)"
+    )
+
+    st.subheader("⑤ Running Docking")
+    st.markdown(
+        "**Single Ligand Docking**:\n"
+        "• Upload one receptor and one ligand\n"
+        "• Configure grid box and parameters\n"
+        "• Click **Run Docking**\n"
+        "• Results will show binding affinity and download link for poses\n\n"
+        "**Batch Docking**:\n"
+        "• Upload one receptor and multiple ligands\n"
+        "• All ligands will be docked sequentially\n"
+        "• Results table shows binding affinities for all ligands\n"
+        "• Download individual poses or export CSV summary\n\n"
+        "**Understanding Results**:\n"
+        "• **Binding Affinity**: Predicted binding energy in kcal/mol (more negative = stronger binding)\n"
+        "• **Poses**: Generated binding conformations\n"
+        "• **Output Files**: PDBQT files containing docked poses\n"
+        "• **Log Files**: Detailed docking logs with scoring information"
+    )
+
+    st.subheader("⑥ Output Files")
+    st.markdown(
+        "**Per-Ligand Outputs**:\n"
+        "• PDBQT files with docked poses (one file per ligand)\n"
+        "• Log files with detailed scoring information\n"
+        "• Download buttons for individual files\n\n"
+        "**Summary Files**:\n"
+        "• CSV file with binding affinities for all ligands\n"
+        "• ZIP archive containing all output files\n"
+        "• Useful for batch analysis and comparison"
+    )
+
+    st.subheader("Tips & Best Practices")
+    st.markdown(
+        "**For Carbonic Anhydrase Docking**:\n"
+        "• Use the provided CA receptors for consistency\n"
+        "• Grid center should be near the zinc binding site\n"
+        "• Typical grid size: 20-25 Å\n\n"
+        "**For General Metalloprotein Docking**:\n"
+        "• Ensure receptor includes metal ions (Zn, Mg, Fe, etc.)\n"
+        "• Grid center should encompass the metal binding site\n"
+        "• Use exhaustiveness 8-16 for initial screening, 32+ for final refinement\n\n"
+        "**Performance Optimization**:\n"
+        "• Use `none` CNN mode for fastest results\n"
+        "• Use `rescore` for better accuracy without much slowdown\n"
+        "• Use `refinement` or `all` for highest accuracy (slower)\n"
+        "• Reduce number of modes if you only need the best pose\n\n"
+        "**Troubleshooting**:\n"
+        "• If docking fails, check that receptor and ligand files are valid\n"
+        "• Ensure grid box encompasses the binding site\n"
+        "• Verify GNINA/SMINA executable is accessible\n"
+        "• Check backend API URL if using cloud deployment"
+    )
+
+    st.subheader("Comparison with Other Docking Methods")
+    st.markdown(
+        "**GNINA vs AutoDock Vina**:\n"
+        "• GNINA is based on Vina but adds CNN scoring\n"
+        "• Similar grid box and exhaustiveness parameters\n"
+        "• GNINA can use CNN to improve pose ranking\n\n"
+        "**GNINA vs AutoDock4**:\n"
+        "• GNINA uses empirical scoring (faster)\n"
+        "• AutoDock4 uses force field scoring (more detailed)\n"
+        "• GNINA supports CNN refinement for pose optimization\n"
+        "• Both support metalloprotein docking"
+    )
+
+    st.info(
+        "💡 **Quick Start**: Upload a CA receptor and ligand, set grid box center to the zinc site, "
+        "use default parameters, and click Run Docking. Check the GNINA ML Docking tab for the interface."
+    )
+
 def render_documentation_page():
     st.header("MetalBind — Documentation")
     st.write(
@@ -2006,6 +2162,7 @@ if "current_page" not in st.session_state:
 nav_pages = [
     "Home",
     "Documentation",
+    "GNINA Documentation",
     "MetalBind Demo",
     "Standard AutoDock",
     "Metalloprotein Docking",
@@ -2042,6 +2199,10 @@ if page == "Documentation":
     render_documentation_page()
     st.stop()
 
+if page == "GNINA Documentation":
+    render_gnina_documentation_page()
+    st.stop()
+
 page_mode = {
     "MetalBind Demo": "ad4",
     "Standard AutoDock": "vina",
@@ -2069,6 +2230,17 @@ if "docking_status_message" not in st.session_state:
 
 st.title(page)
 
+# GNINA-specific info about using provided CA receptors/ligands or own files
+if page_mode == "gnina":
+    st.info(
+        "**📁 Using Provided Files or Your Own:**\n\n"
+        "• **Provided Carbonic Anhydrase Receptors**: You can use the pre-configured CA receptors from the "
+        "`(DEMO) Carbonic Anhydrase Receptors` folder (Carbonic_Anhydrase_I.pdbqt, Carbonic_Anhydrase_II.pdbqt).\n\n"
+        "• **Provided Ligands**: You can use the sample ligands from the `(DEMO) Ligands` folder (18 PFAS ligands).\n\n"
+        "• **Your Own Files**: You can also upload your own receptor (PDB/PDBQT) and ligand files (MOL2/SDF/PDBQT/PDB).\n\n"
+        "Simply upload the files you want to use in the sections below, or navigate to the **GNINA Documentation** tab "
+        "for detailed instructions."
+    )
 
 # Working directory chooser
 work_dir_input = st.text_input(
