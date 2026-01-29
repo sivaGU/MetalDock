@@ -30,7 +30,7 @@ except ImportError:
     HAS_REQUESTS = False
 
 
-# ---- MetalBind Theme Palette ----
+# ---- MBind Theme Palette ----
 LIGHT_POWDER_BLUE = "#6B9FC0"     # Darker Light Powder Blue
 SOFT_SKY_BLUE = "#4A7FA8"         # Darker Soft Sky Blue
 LIGHT_AZURE = "#2D6B94"           # Darker Light Azure
@@ -89,9 +89,9 @@ DEMO_PARAM_DEFAULTS = {
 }
 
 def render_home_page():
-    st.header("Welcome to MetalBind")
+    st.header("Welcome to MBind")
     st.write(
-        "MetalBind streamlines AutoDock4 map-based docking for metalloprotein projects. "
+        "MBind streamlines AutoDock4 map-based docking for metalloprotein projects. "
         "Use this interface to prepare receptors and ligands, build AD4 maps, and run either "
         "classical Vina or AD4 scoring workflows from a single place."
     )
@@ -104,7 +104,7 @@ def render_home_page():
     )
     st.subheader("Workflow Overview")
     st.markdown(
-        "1. Choose a working directory (MetalBind will create the required folders there).\n"
+        "1. Choose a working directory (MBind will create the required folders there).\n"
         "2. Load a receptor from file or path; normalization and optional pseudo atom insertion run automatically.\n"
         "3. Prepare ligands from a source folder or upload ready-to-dock PDBQT files.\n"
         "4. Build or update AD4 maps so that every ligand atom type is covered.\n"
@@ -290,16 +290,16 @@ def render_gnina_documentation_page():
     )
 
 def render_documentation_page():
-    st.header("MetalBind — Documentation")
+    st.header("MBind — Documentation")
     st.write(
         "Welcome to the documentation tab! Below is a detailed, step-by-step guide to the "
-        "MetalBind workflow so you know what each section does and how to use it effectively."
+        "MBind workflow so you know what each section does and how to use it effectively."
     )
 
     st.subheader("① Prepare Your Workspace")
     st.markdown(
         "**1. Choose a working directory.**\\n"
-        "MetalBind creates `prepared_ligands/`, `ad4_maps/`, and `outputs/` inside the folder you set. "
+        "MBind creates `prepared_ligands/`, `ad4_maps/`, and `outputs/` inside the folder you set. "
         "If you run on Streamlit Cloud, the directory defaults to `/mount/src/metallodock/`."
     )
     st.markdown(
@@ -312,7 +312,7 @@ def render_documentation_page():
     st.subheader("② Provide Receptor & Ligands")
     st.markdown(
         "**1. Upload a receptor (PDBQT).**\\n"
-        "Use the uploader or a path. MetalBind normalizes oxygen labels (O → OA) and keeps coordinates intact."
+        "Use the uploader or a path. MBind normalizes oxygen labels (O → OA) and keeps coordinates intact."
     )
     st.markdown(
         "**2. Prepare ligands.**\\n"
@@ -337,7 +337,7 @@ def render_documentation_page():
 
     st.subheader("④ Generate AD4 Maps (when using AD4)")
     st.markdown(
-        "MetalBind wraps AutoGrid4 to create or update map files. The workflow validates inputs before launching the executable:\\n"
+        "MBind wraps AutoGrid4 to create or update map files. The workflow validates inputs before launching the executable:\\n"
         "1. Confirms `autogrid4` exists and has execute permissions.\\n"
         "2. Merges `AD4_parameters.dat` with optional `AD4Zn.dat`.\\n"
         "3. Runs `zinc_pseudo.py` (if present) to insert tetrahedral Zn pseudoatoms.\\n"
@@ -352,7 +352,7 @@ def render_documentation_page():
     st.subheader("⑤ Run Docking")
     st.markdown(
         "**1. Click *Run Docking*.**\\n"
-        "MetalBind queues each ligand, calls the appropriate executable (Vina or AD4), captures stdout/stderr, and displays live status." 
+        "MBind queues each ligand, calls the appropriate executable (Vina or AD4), captures stdout/stderr, and displays live status." 
     )
     st.markdown(
         "**2. Understand the results table.**\\n"
@@ -1775,7 +1775,7 @@ def run_endogenous_preset_ad4(preset_key: str, headless: bool = False) -> List[d
 # ==============================
 
 def _run_cli():
-    parser = argparse.ArgumentParser(description="MetalBind CLI (uses GUI code paths)")
+    parser = argparse.ArgumentParser(description="MBind CLI (uses GUI code paths)")
     parser.add_argument("--cli", action="store_true", help="Run in CLI mode and skip Streamlit UI")
     parser.add_argument("--preset", type=str, default=None,
                         help="One of: CA, SOD1, HDAC1, HDAC2, HDAC3, HDAC4, HDAC6, or HDAC_ALL")
@@ -1906,7 +1906,7 @@ if _files_gui_setup.exists():
 # ==============================
 
 st.set_page_config(
-    page_title="MetalBind",
+    page_title="MBind",
     layout="wide",
 )
 
@@ -1921,7 +1921,8 @@ THEME_CSS = f"""
 /* Main content container: white card on top of gradient */
 .block-container {{
     background-color: rgba(255, 255, 255, 0.96);
-    padding: 2rem 2rem 4rem 2rem;
+    padding: 2rem 3rem 4rem 3rem;
+    margin: 2rem;
     border-radius: 18px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }}
@@ -2180,6 +2181,36 @@ div[data-testid="stFileUploader"] button *,
 div[data-testid="stFileUploader"] button span {{
     color: #000000 !important;
 }}
+
+/* Demo preset buttons - consistent sizing and spacing */
+/* Target all buttons to ensure consistent styling, then override for specific cases */
+.stButton > button {{
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    line-height: 1.3 !important;
+}}
+
+/* Ensure buttons in columns have consistent spacing */
+div[data-testid="column"] {{
+    padding: 0.5rem !important;
+}}
+
+/* Make sure buttons use full width when use_container_width is True */
+div[data-testid="column"] .stButton {{
+    width: 100% !important;
+}}
+
+div[data-testid="column"] .stButton > button {{
+    width: 100% !important;
+    min-height: 60px !important;
+    padding: 0.75rem 1rem !important;
+    font-size: 0.95rem !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    border-radius: 8px !important;
+}}
 </style>
 """
 st.markdown(THEME_CSS, unsafe_allow_html=True)
@@ -2187,20 +2218,20 @@ st.markdown(THEME_CSS, unsafe_allow_html=True)
 if "nav_open" not in st.session_state:
     st.session_state.nav_open = True
 if "current_page" not in st.session_state:
-    st.session_state.current_page = "MetalBind Demo"
+    st.session_state.current_page = "MBind Demo"
 
 nav_pages = [
     "Home",
     "Documentation",
     "GNINA Documentation",
-    "MetalBind Demo",
+    "MBind Demo",
     "Standard AutoDock",
     "Metalloprotein Docking",
     "GNINA ML Docking",
 ]
 
 if st.session_state.current_page not in nav_pages:
-    st.session_state.current_page = "MetalBind Demo"
+    st.session_state.current_page = "MBind Demo"
 
 with st.sidebar:
     toggle_label = "«" if st.session_state.nav_open else "»"
@@ -2234,13 +2265,13 @@ if page == "GNINA Documentation":
     st.stop()
 
 page_mode = {
-    "MetalBind Demo": "ad4",
+    "MBind Demo": "ad4",
     "Standard AutoDock": "vina",
     "Metalloprotein Docking": "ad4",
     "GNINA ML Docking": "gnina",
 }.get(page, "generic")
 
-state_prefix = "demo" if page == "MetalBind Demo" else page_mode
+state_prefix = "demo" if page == "MBind Demo" else page_mode
 
 # Session state initialisation for docking workflow
 if "docking_task" not in st.session_state:
@@ -2288,12 +2319,27 @@ _demo_default_size: Optional[Tuple[float, float, float]] = None
 _demo_default_spacing: Optional[float] = None
 demo_selected_label: Optional[str] = None
 
-if page == "MetalBind Demo":
+if page == "MBind Demo":
     st.subheader("Choose Demo Receptor Preset")
-    preset_cols = st.columns(len(DEMO_PRESETS))
-    for idx, (label, settings) in enumerate(DEMO_PRESETS.items()):
-        if preset_cols[idx].button(label, key=f"demo_preset_{label}"):
+    # Organize buttons into 2 rows of 4 buttons each
+    preset_items = list(DEMO_PRESETS.items())
+    buttons_per_row = 4
+    
+    # First row: 4 buttons
+    row1_cols = st.columns(buttons_per_row)
+    for idx in range(min(buttons_per_row, len(preset_items))):
+        label, settings = preset_items[idx]
+        if row1_cols[idx].button(label, key=f"demo_preset_{label}", use_container_width=True):
             st.session_state["demo_selected_preset"] = label
+    
+    # Second row: remaining 4 buttons
+    if len(preset_items) > buttons_per_row:
+        row2_cols = st.columns(buttons_per_row)
+        for idx in range(buttons_per_row, len(preset_items)):
+            label, settings = preset_items[idx]
+            col_idx = idx - buttons_per_row
+            if row2_cols[col_idx].button(label, key=f"demo_preset_{label}", use_container_width=True):
+                st.session_state["demo_selected_preset"] = label
 
     demo_selected_label = st.session_state.get("demo_selected_preset", next(iter(DEMO_PRESETS)))
     demo_preset_info = DEMO_PRESETS[demo_selected_label]
@@ -2404,7 +2450,7 @@ elif page_mode == "vina":
         "spacing": 0.375,
     }
     maps_prefix_default = str((work_dir / "ad4_maps" / "receptor_maps").resolve())
-elif page == "MetalBind Demo":
+elif page == "MBind Demo":
     allowed_backends = ["AD4 (maps)"]
     default_backend_label = "AD4 (maps)"
     grid_defaults = {
@@ -2513,7 +2559,7 @@ with st.expander("Configuration", expanded=True):
         default_size = grid_defaults["size"]
         default_spacing = grid_defaults["spacing"]
 
-        if page == "MetalBind Demo":
+        if page == "MBind Demo":
             for idx, axis in enumerate(["x", "y", "z"]):
                 center_key = center_keys[axis]
                 size_key = size_keys[axis]
@@ -2534,7 +2580,7 @@ with st.expander("Configuration", expanded=True):
             if f"{state_prefix}_maps_prefix" not in st.session_state:
                 st.session_state[f"{state_prefix}_maps_prefix"] = maps_prefix_default
 
-        grid_disabled = page == "MetalBind Demo"
+        grid_disabled = page == "MBind Demo"
 
         grid_c1, grid_c2, grid_c3 = st.columns(3)
         with grid_c1:
@@ -2634,7 +2680,7 @@ is_windows = platform.system() == "Windows"
 
 st.subheader("Docking Parameters")
 p1, p2, p3, p4 = st.columns(4)
-params_disabled = page == "MetalBind Demo"
+params_disabled = page == "MBind Demo"
 with p1:
     if page_mode == "gnina":
         scoring = "GNINA (ML)"
