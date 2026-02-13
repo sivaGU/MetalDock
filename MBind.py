@@ -1670,7 +1670,8 @@ def run_endogenous_preset_ad4(preset_key: str, headless: bool = False) -> List[d
             pass
 
     # Filter out invalid AD4 receptor types (ions that AutoGrid4 doesn't support)
-    invalid_types = {"K", "Na", "MG", "CA", "CL", "FE", "MN", "ZN", "CU", "CO", "NI"}
+    # Normalize to canonical types for consistent comparison
+    invalid_types = {canon_ad4_type(t) for t in {"K", "Na", "MG", "CA", "CL", "FE", "MN", "ZN", "CU", "CO", "NI"}}
     
     # Create a filtered copy of receptor for map building (remove atoms with invalid types)
     rec_filtered = maps_dir / (rec_tz.stem + "_filtered.pdbqt")
@@ -1680,7 +1681,7 @@ def run_endogenous_preset_ad4(preset_key: str, headless: bool = False) -> List[d
                 for line in f_in:
                     if line.startswith(("ATOM", "HETATM")):
                         toks = line.split()
-                        if toks and toks[-1] in invalid_types:
+                        if toks and canon_ad4_type(toks[-1]) in invalid_types:
                             continue  # Skip atoms with invalid types
                     f_out.write(line)
         rec_tz = rec_filtered
@@ -2899,14 +2900,14 @@ if build_maps_btn:
                     except Exception:
                         pass
 
-                invalid_types = {"K", "NA", "MG", "CA", "CL", "FE", "MN", "ZN", "CU", "CO", "NI"}
+                invalid_types = {canon_ad4_type(t) for t in {"K", "NA", "MG", "CA", "CL", "FE", "MN", "ZN", "CU", "CO", "NI"}}
                 rec_filtered = maps_dir / f"{receptor_copy.stem}_filtered.pdbqt"
                 try:
                     with open(receptor_copy, "r", errors="ignore") as fin, open(rec_filtered, "w", encoding="utf-8") as fout:
                         for line in fin:
                             if line.startswith(("ATOM", "HETATM")):
                                 toks = line.split()
-                                if toks and toks[-1] in invalid_types:
+                                if toks and canon_ad4_type(toks[-1]) in invalid_types:
                                     continue
                             fout.write(line)
                     if rec_filtered.stat().st_size == 0:
@@ -3066,8 +3067,17 @@ if run_btn:
 
     maps_prefix = None
     if backend == "AD4 (maps)":
-        maps_prefix = Path(maps_prefix_input).expanduser().resolve()
-        required_types = sorted(ligand_types_union(ligand_paths) or {"C", "F", "OA", "S", "NA"})
+        maps_prefix_str = (maps_prefix_input or "").strip()
+        if maps_prefix_str:
+            maps_prefix = Path(maps_prefix_str).expanduser()
+            if not maps_prefix.is_absolute():
+                maps_prefix = (work_dir / maps_prefix).resolve()
+            else:
+                maps_prefix = maps_prefix.resolve()
+        if not maps_prefix or not maps_prefix.parts:
+            maps_prefix = (work_dir / "ad4_maps" / "receptor_maps").resolve()
+        required_types_raw = ligand_types_union(ligand_paths) or {"C", "F", "OA", "S", "NA"}
+        required_types = sorted({canon_ad4_type(t) for t in required_types_raw})
         have = list_maps_present(maps_prefix)
         base_req = [
             maps_prefix.parent / f"{maps_prefix.name}.maps.fld",
@@ -3280,14 +3290,14 @@ def build_ad4_maps(
         except Exception:
             pass
 
-    invalid_types = {"K", "Na", "MG", "CA", "CL", "FE", "MN", "ZN", "CU", "CO", "NI"}
+    invalid_types = {canon_ad4_type(t) for t in {"K", "Na", "MG", "CA", "CL", "FE", "MN", "ZN", "CU", "CO", "NI"}}
     rec_filtered = maps_dir / (receptor_copy.stem + "_filtered.pdbqt")
     try:
         with open(receptor_copy, "r", errors="ignore") as fin, open(rec_filtered, "w", encoding="utf-8") as fout:
             for line in fin:
                 if line.startswith(("ATOM", "HETATM")):
                     toks = line.split()
-                    if toks and toks[-1] in invalid_types:
+                    if toks and canon_ad4_type(toks[-1]) in invalid_types:
                         continue
                 fout.write(line)
         if rec_filtered.stat().st_size == 0:

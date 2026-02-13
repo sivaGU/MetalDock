@@ -4,6 +4,28 @@ import math
 from copy import deepcopy
 import sys
 
+def canon_ad4_type(t: str) -> str:
+    """Normalize AutoDock4 atom type to canonical form.
+    
+    AutoDock4 convention for halogens is Cl, Br, Si (Title-case), 
+    while special AD4 types like NA, OA, SA stay uppercase.
+    """
+    t = (t or "").strip()
+    if not t:
+        return t
+    u = t.upper()
+    # AD4 special atom types that are meant to be uppercase
+    specials = {"NA", "OA", "SA", "HD", "HS"}
+    if u in specials:
+        return u
+    # Typical element-like two-letter types -> Title-case (Cl, Br, Si, Zn, etc.)
+    if t.isalpha() and len(t) == 2:
+        return t[0].upper() + t[1].lower()
+    # Default: keep 1-letter as uppercase, otherwise keep as-is
+    if len(t) == 1 and t.isalpha():
+        return t.upper()
+    return t
+
 def dist(a,b):
     return math.sqrt(sum([(a[i]-b[i])**2 for i in range(min(len(a),len(b)))]))
 
@@ -92,7 +114,8 @@ class PDBQT():
         """ PDBQT characters [68:79] """
         self.charge      = float(line[68:76])   # Charge
         self.atype       = line      [77:79]    # Atom type
-        self.atype = self.atype.strip().upper()
+        # Normalize to canonical form (Cl, Br, etc. not CL, BR)
+        self.atype = canon_ad4_type(self.atype.strip())
         self.atomnr = self.atype_to_atomnr(self.atype)
 
     def _print_common(self):
@@ -144,12 +167,15 @@ class PDBQT():
         return D[atomnr]
 
     def atype_to_atomnr(self, atype):
+        # Dictionary uses uppercase for lookup compatibility
         D = {'H':1, 'HD':1, 'HS':1, 'C':6, 'A':6, 'N':7, 'NA':7, 'NS':7,
-             'OA':8,'OS':8, 'F':9, 'MG':12, 'S':16, 'SA':16, 'CL':17,
-             'CA':20, 'MN':25, 'FE':26, 'ZN':30, 'BR':35, 'I':53, 'G':6,
+             'OA':8,'OS':8, 'F':9, 'MG':12, 'S':16, 'SA':16, 'CL':17, 'Cl':17,
+             'CA':20, 'MN':25, 'FE':26, 'ZN':30, 'Zn':30, 'BR':35, 'Br':35, 'I':53, 'G':6,
              'J':6, 'P':15, 'Z':6, 'GA':6, 'Q':6, 'TZ':-1}
         try:
-            return D[atype.strip().upper()]
+            # Normalize to uppercase for dictionary lookup (supports both Cl and CL)
+            lookup_type = atype.strip().upper()
+            return D.get(lookup_type, D.get(atype.strip(), -1))
         except:
             sys.stderr.write(
     'unexpected atom type: %s (not in standard forcefield)\n' % atype)
@@ -170,7 +196,7 @@ def load_pdbqt(filename):
                 num_tz += 1
             else:
                 counter += 1
-                if atom.atype.upper() == 'ZN':
+                if canon_ad4_type(atom.atype) == 'Zn':
                     # set zinc charge to zero
                     atom.charge = 0.0
                 atoms_list.append(atom)
@@ -184,9 +210,11 @@ def load_pdbqt(filename):
         non_atom_text['last'] = non_atom_text.pop(counter)
     return atoms_list, num_tz, max_id, non_atom_text
 
-def bruteNearbyAtoms(atomsList, atype = 'ZN', cutOff = 4.5):
+def bruteNearbyAtoms(atomsList, atype = 'Zn', cutOff = 4.5):
     """Find atoms close to given atype in pdb/pdbqt"""
-    metalsList = [a for a in atomsList if a.atype.upper() == atype]
+    # Normalize both for comparison
+    atype_canon = canon_ad4_type(atype)
+    metalsList = [a for a in atomsList if canon_ad4_type(a.atype) == atype_canon]
     allNearbyLists = []
     for metal in metalsList:
         bht_indx = []
@@ -406,10 +434,11 @@ class znShell():
         valid zinc binder, like NA, it removes the
         1-2 and 1-3 bound atoms for the list.
         The remaining atoms are the binders."""
-        ValidAtoms = ['O','OA','NA','N','S','SA','MG','MN','ZN','CA','FE','CU']
+        # Use canonical forms for comparison
+        ValidAtoms = {canon_ad4_type(t) for t in ['O','OA','NA','N','S','SA','MG','MN','ZN','CA','FE','CU']}
         remove = []
         for i,atom in enumerate(nearAtoms):
-            invalid = (atom.atype not in ValidAtoms)
+            invalid = (canon_ad4_type(atom.atype) not in ValidAtoms)
             too_far = (atom.dist(self.zn) > self.c)
             not_removed = (i not in remove)
             connected = (i in reach3)   # reach3 has no lonely atoms
